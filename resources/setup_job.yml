@@ -46,6 +46,8 @@ resources:
           default: ${var.genie_mypage_name}
         - name: genie_dashboard_name
           default: ${var.genie_dashboard_name}
+        - name: dashboard_name
+          default: ${var.dashboard_name}
         - name: customer_limit
           default: ${var.customer_limit}
 
@@ -180,11 +182,24 @@ resources:
               genie_mypage_name:    "{{job.parameters.genie_mypage_name}}"
               genie_dashboard_name: "{{job.parameters.genie_dashboard_name}}"
 
-        # 10. 最終サマリ出力 (SA が作成物を一目で確認できる)
-        - task_key: print_summary
-          description: "セットアップ結果の最終サマリを出力 (Catalog/Genie/KA/MAS/App の URL・ID 一覧)"
+        # 10. AI/BI ダッシュボード作成 (catalog/schema/Genie ID を動的置換)
+        - task_key: create_dashboard
+          description: "AI/BI ダッシュボードを .lvdash.json から作成/更新 + publish"
           depends_on:
             - task_key: register_config
+          notebook_task:
+            notebook_path: ../setup/create_dashboard.py
+            base_parameters:
+              catalog:        "{{job.parameters.catalog}}"
+              schema:         "{{job.parameters.schema}}"
+              warehouse_id:   "{{job.parameters.warehouse_id}}"
+              dashboard_name: "{{job.parameters.dashboard_name}}"
+
+        # 11. 最終サマリ出力 (SA が作成物を一目で確認できる)
+        - task_key: print_summary
+          description: "セットアップ結果の最終サマリを出力 (Catalog/Genie/KA/MAS/App/Dashboard の URL・ID 一覧)"
+          depends_on:
+            - task_key: create_dashboard
           notebook_task:
             notebook_path: ../setup/print_summary.py
             base_parameters:

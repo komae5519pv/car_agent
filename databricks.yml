@@ -21,14 +21,7 @@ include:
   - resources/*.yml
 
 # sync の詳細は .databricksignore で制御（include を指定しないとデフォルトで全同期）
-sync:
-  exclude:
-    # フロントエンドのソースはビルド済み成果物 (src/car_agent/__dist__) のみ同期すればよい
-    - "app/frontend/src/**"
-    - "app/frontend/public/**"
-    - "app/frontend/*.json"
-    - "app/frontend/*.ts"
-    - "app/frontend/*.js"
+# フロントエンドは src/car_agent/__dist__/ にビルド済み成果物のみ存在（TS ソースは削除済み）
 
 # ====================================================================
 # variables: 全設定をここに集約。SA が --var で上書き可能。
