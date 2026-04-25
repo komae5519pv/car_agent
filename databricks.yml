@@ -1,11 +1,111 @@
-bundle:
-  name: car-ai-demo
+# ====================================================================
+# Car Agent - Databricks Asset Bundle (DAB) root
+#
+# このバンドルは以下を 1 回のデプロイで提供します:
+#   - 初回セットアップ job     (データ生成 + Genie/KA/MAS 作成 + 権限付与)
+#   - AI/BI ダッシュボード
+#   - Databricks App           (React + FastAPI)
+#
+# 使い方:
+#   databricks bundle deploy                        # 全リソース作成
+#   databricks bundle run setup_demo                # 初回セットアップ (15-20 分)
+#
+# 名前をカスタマイズしたい場合:
+#   databricks bundle deploy --var schema=my_demo --var ka_name=my-kb
+# ====================================================================
 
+bundle:
+  name: car-agent
+
+include:
+  - resources/*.yml
+
+# sync の詳細は .databricksignore で制御（include を指定しないとデフォルトで全同期）
 sync:
-  include:
-    - .build
+  exclude:
+    # フロントエンドのソースはビルド済み成果物 (src/car_agent/__dist__) のみ同期すればよい
+    - "app/frontend/src/**"
+    - "app/frontend/public/**"
+    - "app/frontend/*.json"
+    - "app/frontend/*.ts"
+    - "app/frontend/*.js"
+
+# ====================================================================
+# variables: 全設定をここに集約。SA が --var で上書き可能。
+# ====================================================================
+variables:
+  # ---- Unity Catalog / コンピュート ----
+  catalog:
+    description: "Unity Catalog 名"
+    default: konomi_demo_catalog
+  schema:
+    description: "スキーマ名"
+    default: car_agent
+  warehouse_id:
+    description: "SQL Warehouse ID"
+    default: "348478745ad64b30"   # fevm-konomi-demo の Serverless Starter Warehouse
+
+  # ---- リソース名（SA が変更可能） ----
+  app_name:
+    description: "Databricks App 名 (URL slug)"
+    default: car-agent
+  job_display_name:
+    description: "セットアップ Job の表示名"
+    default: "[car-agent] 初回セットアップ"
+  ka_name:
+    description: "Knowledge Assistant 名"
+    default: car-agent-knowledge
+  mas_name:
+    description: "Multi-Agent Supervisor 名"
+    default: car-agent-supervisor
+  genie_vehicle_name:
+    description: "車両営業アシスタント Genie Space 名"
+    default: "[car-agent] 車両営業アシスタント"
+  genie_mypage_name:
+    description: "営業マイページ Genie Space 名"
+    default: "[car-agent] 営業マイページ"
+  genie_dashboard_name:
+    description: "営業データ Genie Space 名"
+    default: "[car-agent] 営業データ"
+  dashboard_name:
+    description: "AI/BI ダッシュボード名"
+    default: "[car-agent] 車両販売ダッシュボード"
+
+  # ---- デモ固有 ----
+  sales_rep_name:
+    description: "デモで使う営業担当者名"
+    default: "大前 このみ"
+  sales_rep_email:
+    description: "営業担当者のメールアドレス"
+    default: "konomi.omae@databricks.com"
+  llm_model:
+    description: "Foundation Model API のモデル名"
+    default: "databricks-claude-sonnet-4"
+  customer_limit:
+    description: "【開発用】gold レイヤーで AI 処理する顧客数を制限（空 = 全件、本番では未設定）"
+    default: ""
 
 targets:
+  # ------------------------------------------------------------------
+  # dev: fevm-konomi-demo ワークスペースで開発。
+  #   databricks bundle deploy --profile fe-vm-konomi-demo
+  # ------------------------------------------------------------------
   dev:
     mode: development
     default: true
+    workspace:
+      host: https://fevm-konomi-demo.cloud.databricks.com
+      root_path: /Workspace/Users/konomi.omae@databricks.com/04_Event/20260427_jp_fe_demo_competition
+      # ソースをルート直下に配置（files/ サブディレクトリをスキップ）
+      file_path:     ${workspace.root_path}
+      artifact_path: ${workspace.root_path}/.bundle/artifacts
+      state_path:    ${workspace.root_path}/.bundle/state
+
+  # ------------------------------------------------------------------
+  # prod: 汎用配布用。配布先の SA が --var で上書きして使う。
+  #   databricks bundle deploy -t prod --var catalog=<your_catalog>
+  # ------------------------------------------------------------------
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}

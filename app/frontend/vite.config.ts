@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../../src/car_ai_demo/__dist__',
+    outDir: '../../src/car_agent/__dist__',
     emptyOutDir: true,
   },
   server: {

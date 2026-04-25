@@ -1,34 +1,41 @@
-# Databricks Apps Configuration for Car AI Demo
-command: ["uvicorn", "car_ai_demo.backend.app:app", "--workers", "2"]
+# ====================================================================
+# Databricks Apps runtime configuration (car-agent)
+#
+# 以下のうち環境変数で渡すのは「アプリ起動に必要な最小限」のみ:
+#   - CATALOG / SCHEMA_NAME    : _app_config テーブルの場所
+#   - DATABRICKS_WAREHOUSE_ID  : SQL Warehouse (_app_config 読み取り + データ取得)
+#   - PYTHONPATH               : src レイアウト
+#   - LLM_MODEL                : Foundation Model 名 (デフォルト)
+#   - EMAIL_REP_MAPPING        : 営業担当メールとの対応
+#
+# Genie ID / KA endpoint / MAS endpoint はアプリ起動時に
+# {CATALOG}.{SCHEMA_NAME}._app_config から動的に読み込まれます。
+# ====================================================================
+
+command: ["uvicorn", "car_agent.backend.app:app", "--workers", "2"]
 
 env:
-  - name: 'DATABRICKS_WAREHOUSE_ID'
-    value: '348478745ad64b30'
-
   - name: 'PYTHONPATH'
     value: 'src'
 
-  - name: 'SALES_MYPAGE_GENIE_SPACE_ID'
-    value: '01f13bd256c11b0cb17f818f4bd28b71'
-
-  # Unity Catalog Configuration
+  # Unity Catalog (_app_config テーブルの場所)
   - name: 'CATALOG'
     value: 'konomi_demo_catalog'
   - name: 'SCHEMA_NAME'
-    value: 'car_ai_demo'
+    value: 'car_agent'
 
-  # LLM Configuration
+  # SQL Warehouse (_app_config + データ取得)
+  - name: 'DATABRICKS_WAREHOUSE_ID'
+    value: '348478745ad64b30'
+
+  # LLM デフォルト
   - name: 'LLM_MODEL'
     value: 'databricks-claude-sonnet-4'
 
-  # Agent Endpoint (Multi-Agent Supervisor)
-  - name: 'AGENT_ENDPOINT_NAME'
-    value: 'mas-e9f1d14c-endpoint'
-
-  # Email → 担当者名マッピング（JSON形式）
+  # Email → 営業担当名マッピング (JSON)
   - name: 'EMAIL_REP_MAPPING'
     value: '{"konomi.omae@databricks.com":"大前 このみ"}'
 
-  # Application Configuration
+  # Application
   - name: 'DEBUG'
     value: 'false'

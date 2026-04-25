@@ -14,7 +14,7 @@
         "    revenue,\n",
         "    contracts,\n",
         "    inquiries\n",
-        "FROM konomi_demo_catalog.car_ai_demo.gd_store_daily_activity\n",
+        "FROM konomi_demo_catalog.car_agent.gd_store_daily_activity\n",
         "-- WHERE YEAR(activity_date) = 2026"
       ],
       "columns": [
@@ -44,7 +44,7 @@
         "    revenue,\n",
         "    contracts,\n",
         "    inquiries\n",
-        "FROM konomi_demo_catalog.car_ai_demo.gd_store_daily_activity\n",
+        "FROM konomi_demo_catalog.car_agent.gd_store_daily_activity\n",
         "-- WHERE YEAR(activity_date) = 2026\n",
         ") GROUP BY 1\n",
         "  ),\n",

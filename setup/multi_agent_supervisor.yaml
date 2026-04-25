@@ -1,0 +1,52 @@
+# ====================================================================
+# Multi-Agent Supervisor 定義（setup/create_mas.py が読み込む）
+#
+# display_name は databricks.yml の var.mas_name で上書き可能
+# 配下エージェントは Genie Space / Knowledge Assistant を「名前」で指定
+# （notebook 実行時に API で名前から ID を解決）
+# ====================================================================
+
+display_name_var: mas_name        # databricks.yml の var.mas_name
+description: |
+  中古車販売の営業支援マルチエージェント。
+  質問内容に応じて Genie / Knowledge Assistant を振り分けて回答。
+
+instructions: |
+  営業担当者の質問に対し、以下のルールで適切な配下エージェントに振り分けて回答してください。
+
+  - 顧客・在庫・商談・推薦データに関する質問 → vehicle_genie
+  - 営業担当者個人の成績・売上実績に関する質問 → mypage_genie
+  - 店舗別売上・転換率・営業データ分析 → dashboard_genie
+  - 車両スペック・営業トーク・金融知識（ローン等）に関する質問 → knowledge_assistant
+
+  回答ルール:
+  - 日本語で回答
+  - 金額は万円単位
+  - 顧客名は「苗字＋様」形式
+  - 複数エージェントを組み合わせてもよい（例: 顧客情報 + 営業トーク）
+
+# ----------------------------------------------------------------
+# agents: 配下エージェント
+#   genie_space_name_var: databricks.yml の var.<name> を参照してその display_name で Genie Space を探す
+#   ka_name_var:         databricks.yml の var.<name> を参照してその display_name で KA を探す
+# ----------------------------------------------------------------
+agents:
+  - name: vehicle_genie
+    description: 顧客・在庫・商談・推薦データを参照して営業担当者の質問に答える Genie
+    type: genie-space
+    genie_space_name_var: genie_vehicle_name
+
+  - name: mypage_genie
+    description: 営業担当者個人の成績・売上実績を分析する Genie
+    type: genie-space
+    genie_space_name_var: genie_mypage_name
+
+  - name: dashboard_genie
+    description: 店舗別売上・転換率・営業データ分析用の Genie
+    type: genie-space
+    genie_space_name_var: genie_dashboard_name
+
+  - name: knowledge_assistant
+    description: 車両カタログ・営業トーク・金融知識を参照する RAG
+    type: knowledge-assistant
+    ka_name_var: ka_name

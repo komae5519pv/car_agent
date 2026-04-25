@@ -1,0 +1,31 @@
+# ====================================================================
+# car-agent: Databricks App (React + FastAPI)
+#
+# 配布物:
+#   src/car_agent/                  Python パッケージ (FastAPI backend)
+#   src/car_agent/__dist__/         ビルド済みフロントエンド
+#   app.yaml                        App ランタイム設定 (command, env)
+#
+# 起動エントリポイント:
+#   uvicorn car_agent.backend.app:app
+# ====================================================================
+
+resources:
+  apps:
+    car_agent:
+      name: ${var.app_name}
+      description: |
+        中古車販売 営業支援 AI エージェント。
+        顧客ニーズ分析、車両レコメンド、トークスクリプト生成を提供します。
+
+      # デプロイされた /files/ 配下を app ソースとして使う
+      source_code_path: ${workspace.file_path}
+
+      # ---- App が参照するリソース ----
+      # 各リソースには permission を指定、app の service principal に付与される
+      resources:
+        - name: sql-warehouse
+          description: "データ取得用の SQL Warehouse"
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE

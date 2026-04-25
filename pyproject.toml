@@ -1,5 +1,5 @@
 [project]
-name = "car-ai-demo"
+name = "car-agent"
 version = "0.1.0"
 description = "Car AI Demo - AI-powered vehicle recommendation system"
 readme = "README.md"
@@ -18,18 +18,18 @@ dependencies = [
 ]
 
 [tool.apx.metadata]
-app-name = "car-ai-demo"
-app-slug = "car_ai_demo"
-app-entrypoint = "car_ai_demo.backend.app:app"
+app-name = "car-agent"
+app-slug = "car_agent"
+app-entrypoint = "car_agent.backend.app:app"
 api-prefix = "/api"
-metadata-path = "src/car_ai_demo/_metadata.py"
+metadata-path = "src/car_agent/_metadata.py"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
-artifacts = ["src/car_ai_demo/__dist__"]
+artifacts = ["src/car_agent/__dist__"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/car_ai_demo"]
+packages = ["src/car_agent"]

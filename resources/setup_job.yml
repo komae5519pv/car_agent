@@ -1,0 +1,195 @@
+# ====================================================================
+# [car-agent] 初回セットアップ job
+#
+# 実行:
+#   databricks bundle run setup_demo --profile <profile>
+#
+# フェーズごとに task を追加していく:
+#   Phase 1 (現在): データパイプライン (01 → 02 → 03 → 04)
+#   Phase 2: create_genies       (Genie Space ×3)
+#   Phase 3: create_ka           (Knowledge Assistant)
+#   Phase 4: create_mas          (Multi-Agent Supervisor)
+#   Phase 5: register_config     (_app_config テーブルに ID 登録)
+#   Phase 7: grant_perms         (App SP へ権限付与)
+#   Phase 7: print_summary       (最終サマリ出力)
+# ====================================================================
+
+resources:
+  jobs:
+    setup_demo:
+      name: ${var.job_display_name}
+      description: |
+        中古車販売 AI デモ (car-agent) の初回セットアップ。
+        データ生成を 4 タスクで順次実行します。
+
+      # ---- ユーザーが bundle run 時にオーバーライド可能 ----
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: sales_rep_name
+          default: ${var.sales_rep_name}
+        - name: llm_model
+          default: ${var.llm_model}
+        - name: app_name
+          default: ${var.app_name}
+        - name: warehouse_id
+          default: ${var.warehouse_id}
+        - name: ka_name
+          default: ${var.ka_name}
+        - name: mas_name
+          default: ${var.mas_name}
+        - name: genie_vehicle_name
+          default: ${var.genie_vehicle_name}
+        - name: genie_mypage_name
+          default: ${var.genie_mypage_name}
+        - name: genie_dashboard_name
+          default: ${var.genie_dashboard_name}
+        - name: customer_limit
+          default: ${var.customer_limit}
+
+      # ---- タスク定義 ----
+      tasks:
+        # 1. 生データ + Volume + スキーマ作成
+        - task_key: setup_demo_data
+          description: "生データ CSV + 車両画像 + Volume + スキーマ作成"
+          notebook_task:
+            notebook_path: ../01_setup_demo_data.py
+            base_parameters:
+              catalog:        "{{job.parameters.catalog}}"
+              schema:         "{{job.parameters.schema}}"
+              sales_rep_name: "{{job.parameters.sales_rep_name}}"
+              llm_model:      "{{job.parameters.llm_model}}"
+
+        # 2. Bronze レイヤー
+        - task_key: build_bronze
+          description: "Bronze テーブル構築 (生データ取り込み)"
+          depends_on:
+            - task_key: setup_demo_data
+          notebook_task:
+            notebook_path: ../02_bronze.py
+            base_parameters:
+              catalog:        "{{job.parameters.catalog}}"
+              schema:         "{{job.parameters.schema}}"
+              sales_rep_name: "{{job.parameters.sales_rep_name}}"
+              llm_model:      "{{job.parameters.llm_model}}"
+
+        # 3. Silver レイヤー
+        - task_key: build_silver
+          description: "Silver テーブル構築 (クレンジング/正規化)"
+          depends_on:
+            - task_key: build_bronze
+          notebook_task:
+            notebook_path: ../03_silver.py
+            base_parameters:
+              catalog:        "{{job.parameters.catalog}}"
+              schema:         "{{job.parameters.schema}}"
+              sales_rep_name: "{{job.parameters.sales_rep_name}}"
+              llm_model:      "{{job.parameters.llm_model}}"
+
+        # 4. Gold レイヤー
+        - task_key: build_gold
+          description: "Gold テーブル構築 (推薦・インサイト用集約)"
+          depends_on:
+            - task_key: build_silver
+          notebook_task:
+            notebook_path: ../04_gold.py
+            base_parameters:
+              catalog:        "{{job.parameters.catalog}}"
+              schema:         "{{job.parameters.schema}}"
+              sales_rep_name: "{{job.parameters.sales_rep_name}}"
+              llm_model:      "{{job.parameters.llm_model}}"
+              customer_limit: "{{job.parameters.customer_limit}}"
+
+        # 5. App SP への全権限付与 (catalog / schema / Genie / KA / MAS)
+        #    Genie/KA/MAS の権限は create_mas の後じゃないと付与できないので最後に実行
+        - task_key: grant_app_perms
+          description: "App SP に UC / Genie / KA / MAS 全権限を一括付与"
+          depends_on:
+            - task_key: create_mas
+          notebook_task:
+            notebook_path: ../setup/grant_app_perms.py
+            base_parameters:
+              catalog:              "{{job.parameters.catalog}}"
+              schema:               "{{job.parameters.schema}}"
+              app_name:             "{{job.parameters.app_name}}"
+              ka_name:              "{{job.parameters.ka_name}}"
+              mas_name:             "{{job.parameters.mas_name}}"
+              genie_vehicle_name:   "{{job.parameters.genie_vehicle_name}}"
+              genie_mypage_name:    "{{job.parameters.genie_mypage_name}}"
+              genie_dashboard_name: "{{job.parameters.genie_dashboard_name}}"
+
+        # 6. Genie Space ×3 作成 (冪等)
+        - task_key: create_genies
+          description: "3 つの Genie Space を genie_spaces.yaml の定義に従って作成/更新"
+          depends_on:
+            - task_key: build_gold
+          notebook_task:
+            notebook_path: ../setup/create_genies.py
+            base_parameters:
+              catalog:              "{{job.parameters.catalog}}"
+              schema:               "{{job.parameters.schema}}"
+              warehouse_id:         "{{job.parameters.warehouse_id}}"
+              genie_vehicle_name:   "{{job.parameters.genie_vehicle_name}}"
+              genie_mypage_name:    "{{job.parameters.genie_mypage_name}}"
+              genie_dashboard_name: "{{job.parameters.genie_dashboard_name}}"
+
+        # 7. Knowledge Assistant 作成 (冪等, Volume 内ドキュメントをインデックス化、endpoint 起動待ち込み)
+        - task_key: create_ka
+          description: "Knowledge Assistant を knowledge_assistant.yaml の定義に従って作成/更新"
+          depends_on:
+            - task_key: build_gold
+          notebook_task:
+            notebook_path: ../setup/create_ka.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema:  "{{job.parameters.schema}}"
+              ka_name: "{{job.parameters.ka_name}}"
+
+        # 8. Multi-Agent Supervisor 作成 (Genie ×3 + KA を束ねる)
+        - task_key: create_mas
+          description: "Multi-Agent Supervisor を multi_agent_supervisor.yaml の定義に従って作成/更新"
+          depends_on:
+            - task_key: create_genies
+            - task_key: create_ka
+          notebook_task:
+            notebook_path: ../setup/create_mas.py
+            base_parameters:
+              mas_name:             "{{job.parameters.mas_name}}"
+              ka_name:              "{{job.parameters.ka_name}}"
+              genie_vehicle_name:   "{{job.parameters.genie_vehicle_name}}"
+              genie_mypage_name:    "{{job.parameters.genie_mypage_name}}"
+              genie_dashboard_name: "{{job.parameters.genie_dashboard_name}}"
+
+        # 9. _app_config テーブルに全 ID を登録 (App が起動時に参照)
+        - task_key: register_config
+          description: "Genie / KA / MAS / App の ID を _app_config テーブルへ登録"
+          depends_on:
+            - task_key: create_mas
+            - task_key: grant_app_perms
+          notebook_task:
+            notebook_path: ../setup/register_config.py
+            base_parameters:
+              catalog:              "{{job.parameters.catalog}}"
+              schema:               "{{job.parameters.schema}}"
+              app_name:             "{{job.parameters.app_name}}"
+              ka_name:              "{{job.parameters.ka_name}}"
+              mas_name:             "{{job.parameters.mas_name}}"
+              genie_vehicle_name:   "{{job.parameters.genie_vehicle_name}}"
+              genie_mypage_name:    "{{job.parameters.genie_mypage_name}}"
+              genie_dashboard_name: "{{job.parameters.genie_dashboard_name}}"
+
+        # 10. 最終サマリ出力 (SA が作成物を一目で確認できる)
+        - task_key: print_summary
+          description: "セットアップ結果の最終サマリを出力 (Catalog/Genie/KA/MAS/App の URL・ID 一覧)"
+          depends_on:
+            - task_key: register_config
+          notebook_task:
+            notebook_path: ../setup/print_summary.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema:  "{{job.parameters.schema}}"
+
+      # ---- 実行環境 ----
+      # Notebook task はサーバレスで実行される (既定)

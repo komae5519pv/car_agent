@@ -1,225 +1,299 @@
-# Car AI Demo - 車両提案AIアプリケーション
+# Car Agent — 中古車販売 営業支援 AI デモ
 
-現場営業担当者向けAI車両レコメンデーションシステム。顧客のニーズを分析し、最適な車両を提案します。
+Databricks 上で動く「中古車販売の営業担当者を支援する AI エージェント」デモです。
+Genie / Agent Bricks（Knowledge Assistant / Multi-Agent Supervisor）/ Databricks Apps / Unity Catalog を統合した**本番想定の構成**を、**SA がコマンド 3〜4 発で自ワークスペースに再現**できるようにパッケージ化しています。
 
-## 機能
+> 💡 **SA の方へ**：このデモを自分の環境で動かすには、下の [セットアップ手順](#-セットアップ手順4-コマンド) の通りに進めてください。所要時間は初回 15〜20 分。
 
-### 現場営業向けUI (`/sales`)
-- **顧客一覧・選択**: 顧客リストの表示と検索
-- **顧客インサイト**: AIによる顧客ニーズ分析
-- **車両レコメンド**: 3台の推薦車両（マッチ度スコア付き）
-- **トークスクリプト**: 顧客特性に合わせた提案トーク
-- **Ask AI チャット**: 常駐サイドバーでの自由質問
+---
 
-### 管理者向けUI (`/admin`)
-- **ダッシュボード**: 主要KPIの表示
-- **AI推論ログ**: MLflow Tracing連携
-- **AI Gateway監視**: エンドポイントモニタリング
-- **評価管理**: AI出力の人間評価とGround Truth登録
-- **データカタログ**: Unity Catalogテーブル一覧
+## 📺 このデモで見られるもの
 
-## 技術スタック
+| UI | 機能 | 裏側 |
+|---|---|---|
+| **現場営業画面** `/sales` | 顧客一覧、顧客インサイト、車両レコメンド、トークスクリプト、Ask AI チャット | UC テーブル、Foundation Model API、Multi-Agent Supervisor |
+| **マイページ** `/sales/mypage` | 営業担当者の成績分析・Genie 質問 | マイページ用 Genie Space |
+| **管理者画面** `/admin` | ダッシュボード、AI 推論ログ、データカタログ | UC、MLflow Tracing |
 
-### Frontend
-- React 19
-- TypeScript 5.9
-- TailwindCSS 4
-- Zustand (状態管理)
-- React Router 7
-- React Icons
+---
 
-### Backend
-- FastAPI
-- Python 3.11+
-- Databricks SQL Connector
-- OpenAI SDK (Foundation Model API)
-- MLflow Tracing
+## 🏗 構成（セットアップ完了後にワークスペースに存在するもの）
 
-### Infrastructure
-- Databricks Apps
-- Unity Catalog
-- Foundation Model API (Claude Sonnet 4)
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  Unity Catalog  <catalog>.<schema>                                    │
+│  ├─ テーブル ×30+ (sv_*, gd_*, mv_*)                                  │
+│  ├─ Volume: images / raw_data / knowledge                             │
+│  └─ _app_config テーブル (App が起動時に参照する ID 一覧)              │
+├──────────────────────────────────────────────────────────────────────┤
+│  Genie Spaces ×3                                                      │
+│  ├─ [car-agent] 車両営業アシスタント    (顧客・在庫・商談)             │
+│  ├─ [car-agent] 営業マイページ         (個人成績分析)                  │
+│  └─ [car-agent] 営業データ             (店舗売上・転換率)              │
+├──────────────────────────────────────────────────────────────────────┤
+│  Agent Bricks                                                         │
+│  ├─ Knowledge Assistant「car-agent-knowledge」                        │
+│  │     └─ Volume 内の車両カタログ・営業トーク・金融知識を RAG         │
+│  └─ Multi-Agent Supervisor「car-agent-supervisor」                    │
+│        └─ 上の Genie ×3 + KA を束ねて振り分け                          │
+├──────────────────────────────────────────────────────────────────────┤
+│  Databricks App「car-agent」 (React + FastAPI)                        │
+│    └─ URL: https://car-agent-<workspace-id>.aws.databricksapps.com    │
+├──────────────────────────────────────────────────────────────────────┤
+│  Databricks Job「[car-agent] 初回セットアップ」                        │
+│    └─ 上のリソース全部を一発で作る自動化 Job (10 タスク)                │
+└──────────────────────────────────────────────────────────────────────┘
+```
 
-## セットアップ
+上記リソースは `databricks.yml` の `variables:` で名前を自由に変更可能です。
 
-### 前提条件
-- Node.js 20+
-- Python 3.11+
-- Databricks CLI 0.229.0+
-- uv (Python package manager)
+---
 
-### ローカル開発
+## 📋 前提条件
 
-1. **リポジトリのクローン**
+| 項目 | 説明 |
+|---|---|
+| **Databricks CLI 0.230+** | `brew install databricks/tap/databricks` または [公式インストーラ](https://docs.databricks.com/dev-tools/cli/install.html) |
+| **自分のワークスペースでの権限** | Catalog の MANAGE、Genie / Agent Bricks / Apps / SQL Warehouse の作成・使用 |
+| **SQL Warehouse** | 稼働中のもの（Serverless 推奨） |
+| **Foundation Model API** | `databricks-claude-sonnet-4` が有効（既定） |
+| **Agent Bricks 機能** | workspace で有効化されていること |
+
+> 権限が揃っていない場合は管理者に依頼。権限不足はエラーメッセージで顕在化します。
+
+---
+
+## 🚀 セットアップ手順（4 コマンド）
+
+### Step 1. リポジトリ取得
+
 ```bash
-cd ~/code/car-ai-demo
+git clone <このリポジトリの URL>
+cd car_ai_agent
 ```
 
-2. **バックエンドのセットアップ**
+### Step 2. Databricks 認証
+
 ```bash
-cd backend
-uv venv
-source .venv/bin/activate
-uv pip install -r requirements.txt
-cp .env.example .env
-# .envファイルを編集してDatabricks設定を入力
+databricks auth login --host https://<自分のワークスペース>.cloud.databricks.com
 ```
 
-3. **フロントエンドのセットアップ**
+ブラウザが開いてログインすると `~/.databrickscfg` に保存されます。プロファイル名（例: `my-workspace`）を控えておいてください。
+
+### Step 3.（任意）設定カスタマイズ
+
+`databricks.yml` の `variables:` セクションを開き、必要なら `default` を書き換え：
+
+```yaml
+variables:
+  # ---- UC / 環境 ----
+  catalog:              { default: konomi_demo_catalog }      # ← 自分のカタログに変更
+  schema:               { default: car_agent }                # ← 好きなスキーマ名
+  warehouse_id:         { default: "348478745ad64b30" }       # ← 自分の warehouse ID
+
+  # ---- リソース名（他のリソースとの衝突を避けるために変更推奨） ----
+  app_name:             { default: car-agent }
+  job_display_name:     { default: "[car-agent] 初回セットアップ" }
+  ka_name:              { default: car-agent-knowledge }
+  mas_name:             { default: car-agent-supervisor }
+  genie_vehicle_name:   { default: "[car-agent] 車両営業アシスタント" }
+  genie_mypage_name:    { default: "[car-agent] 営業マイページ" }
+  genie_dashboard_name: { default: "[car-agent] 営業データ" }
+
+  # ---- デモ担当者 ----
+  sales_rep_name:       { default: "大前 このみ" }             # ← デモ主役の営業担当名
+  sales_rep_email:      { default: "konomi.omae@databricks.com" }
+  llm_model:            { default: "databricks-claude-sonnet-4" }
+
+  # ---- 開発モード（本番は触らない） ----
+  customer_limit:       { default: "" }                        # "3" などにすると gold の AI 処理を 3 顧客に制限
+```
+
+> **SA が触るのはこのファイルだけ**です。他の設定ファイル（`app.yaml`, `00_config.py` など）は触る必要ありません。
+
+CLI で一時的に上書きも可能：
+
 ```bash
-cd frontend
-npm install
+databricks bundle deploy --var catalog=my_catalog --var schema=my_demo
 ```
 
-4. **開発サーバーの起動**
+### Step 4. リソースのデプロイ + 実行
 
-ターミナル1 (Backend):
 ```bash
-cd backend
-source .venv/bin/activate
-python run.py
+# 4-1. バンドルデプロイ (Job + App リソースのガワを作る、約 30 秒)
+databricks bundle deploy --profile <自分のプロファイル>
+
+# 4-2. セットアップ Job 実行 (全自動、本番 15-20 分 / 開発 5-10 分)
+databricks bundle run setup_demo --profile <自分のプロファイル>
+
+# 4-3. App デプロイ (コードを配置して起動、約 2-3 分)
+databricks bundle run car_agent --profile <自分のプロファイル>
 ```
 
-ターミナル2 (Frontend):
+**開発中で早く回したい場合**（gold の AI 処理を 3 顧客に制限）：
+
 ```bash
-cd frontend
-npm run dev
+databricks bundle run setup_demo --profile <プロファイル> --params customer_limit=3
 ```
 
-5. **ブラウザでアクセス**
+### Step 5. App を開く
+
+Step 4-3 の最後の行に表示される App URL をブラウザで開きます。
+
 ```
-http://localhost:5173
+✓ App started successfully
+You can access the app at https://car-agent-xxxxxx.aws.databricksapps.com
 ```
 
-## Databricks Appsへのデプロイ
+---
 
-### 1. フロントエンドのビルド
+## 🔍 セットアップで何が起きるか（詳細）
+
+### `databricks bundle deploy` の動作
+
+- ワークスペースの指定パスにリポジトリのファイル一式を同期
+- 以下の Databricks リソースを作成（まだ走らない、ガワだけ）：
+  - **Job**：`[car-agent] 初回セットアップ`
+  - **App**：`car-agent`（Service Principal も同時に自動生成）
+
+### `databricks bundle run setup_demo` の動作（10 タスクが順次実行）
+
+| # | タスク | 所要 | 何をするか |
+|---|---|---|---|
+| 1 | `setup_demo_data` | 30 秒 | UC Catalog / Schema / Volume 作成、生データ CSV を Volume に配置、車両画像をコピー |
+| 2 | `build_bronze` | 1 分 | 生データ → Bronze テーブル |
+| 3 | `build_silver` | 2 分 | Bronze → Silver（クレンジング・正規化） |
+| 4 | `build_gold` | 5-10 分 | Silver → Gold（LLM で顧客インサイト / 車両推薦 / 営業トーク生成） |
+| 5 | `create_genies` | 30 秒 | Genie Space ×3 を `setup/genie_spaces.yaml` に従って作成 |
+| 6 | `create_ka` | 5-10 分 | Knowledge Assistant を作成、Volume のドキュメントをインデックス化 |
+| 7 | `create_mas` | 1-3 分 | Multi-Agent Supervisor を作成（Genie ×3 + KA を束ねる） |
+| 8 | `grant_app_perms` | 30 秒 | App SP に UC / Genie / KA / MAS の必要権限を付与 |
+| 9 | `register_config` | 20 秒 | Genie/KA/MAS の ID を `_app_config` テーブルに記録（App が起動時に参照） |
+| 10 | `print_summary` | 10 秒 | 作成物の URL/ID 一覧を出力 |
+
+タスク間の依存関係は DAG で管理されており、gold 完了後は Genie と KA が並列実行されます。
+
+### `databricks bundle run car_agent` の動作
+
+- 先に同期されたソース（`src/car_agent/`）を Databricks Apps ランタイムに配置
+- `uvicorn car_agent.backend.app:app` を起動
+- App 起動時：
+  1. `_app_config` テーブルから Genie / KA / MAS の ID を動的取得（環境変数のベタ書き不要）
+  2. SQL Warehouse 接続
+  3. FastAPI サーバ起動 → URL で使用可能に
+
+---
+
+## 📁 リポジトリ構造
+
+```
+car_ai_agent/
+├── databricks.yml              ★ SA が編集する唯一の設定ファイル
+├── README.md
+│
+├── 00_config.py                ⚠️ 編集不要（widget から値を受け取るだけ）
+├── 01_setup_demo_data.py       データパイプライン（01〜04 は Job 経由で自動実行）
+├── 02_bronze.py
+├── 03_silver.py
+├── 04_gold.py
+│
+├── app.yaml                    Databricks App ランタイム設定
+├── 車両販売ダッシュボード.lvdash.json   AI/BI ダッシュボード定義
+├── pyproject.toml / requirements.txt
+│
+├── _images/                    車両画像（Volume にコピーされる）
+├── app/frontend/               React ソース
+├── src/car_agent/              Python バックエンド (+ ビルド済みフロントエンド)
+│
+├── docs/                       📚 【参考】手動セットアップ手順書
+│   ├── README.md
+│   ├── DEMO_SCENARIO.md
+│   └── 【参考】Genie作成手順.py など
+│
+├── resources/                  ⚙️ DAB リソース定義（SA は触らない）
+│   ├── setup_job.yml
+│   └── app.yml
+│
+└── setup/                      ⚙️ 自動化スクリプト（Job が呼ぶ）
+    ├── genie_spaces.yaml       Genie の中身（instructions/sample_questions 等）
+    ├── knowledge_assistant.yaml KA の中身
+    ├── multi_agent_supervisor.yaml MAS の中身
+    ├── create_genies.py        ↑の定義を読んで API で作成
+    ├── create_ka.py
+    ├── create_mas.py
+    ├── grant_app_perms.py
+    ├── register_config.py
+    └── print_summary.py
+```
+
+---
+
+## ✅ 動作確認
+
+App URL をブラウザで開いて：
+
+| 画面 | 確認ポイント |
+|---|---|
+| 顧客一覧 | 顧客カードが表示される |
+| 顧客詳細 → 顧客インサイト | AI 生成の洞察が表示される |
+| 顧客詳細 → 車両レコメンド | 3 台の推薦車両と画像が表示 |
+| Ask AI チャット | 「田中様に合う SUV を教えて」などに日本語で回答 |
+| マイページ | 営業成績が表示、Genie に質問できる |
+
+セットアップで作ったものを後から確認するには：
+
+```sql
+-- Databricks SQL エディタで
+SELECT key, value, description FROM <catalog>.<schema>._app_config ORDER BY key;
+```
+
+---
+
+## 🧹 全削除
+
 ```bash
-cd frontend
-npm run build
+# 1. DAB 管理リソース（Job + App + workspace ファイル）
+databricks bundle destroy --profile <プロファイル> --auto-approve
+
+# 2. DAB 管理外（Genie / KA / MAS）は Databricks UI から削除
+#    or 放置（次回 setup_demo 実行時に冪等に上書きされる）
+
+# 3. UC スキーマ削除（データを完全消去したい場合）
+databricks api post /api/2.0/sql/statements --json \
+  '{"warehouse_id":"<id>","statement":"DROP SCHEMA IF EXISTS <catalog>.<schema> CASCADE"}' \
+  --profile <プロファイル>
 ```
 
-### 2. Databricks認証
+---
+
+## 🆘 トラブルシューティング
+
+| 症状 | 原因 | 対処 |
+|---|---|---|
+| `legacy databricks CLI detected` | 古い CLI が PATH 優先 | `export PATH="/opt/homebrew/bin:$PATH"` で新 CLI を優先 |
+| カタログ権限エラー | catalog の MANAGE がない | 管理者依頼 or owner のカタログに変更 |
+| Agent Bricks 作成失敗 | 機能が無効 | 管理者依頼 |
+| App で「顧客が見つかりませんでした」 | `grant_app_perms` 未実行 or App 未再起動 | `bundle run setup_demo --only grant_app_perms` → `bundle run car_agent` |
+| Genie 作成失敗: `serialized_space is required` | 既存 Genie がない clean state | 最新コードに pull してから再実行 |
+| Ask AI でエラー | App SP が MAS endpoint にアクセスできない | `bundle run setup_demo --only grant_app_perms` → App 再起動 |
+
+途中のタスクで失敗した場合は、ジョブの失敗タスク以降だけ再実行できます：
+
 ```bash
-databricks auth login --host https://e2-demo-field-eng.cloud.databricks.com
+databricks bundle run setup_demo --only create_genies,create_mas,grant_app_perms,register_config,print_summary
 ```
 
-### 3. ワークスペースへの同期
-```bash
-databricks sync . /Workspace/Users/your-email/car-ai-demo --watch
-```
+---
 
-### 4. アプリの作成とデプロイ
-```bash
-# アプリの作成（初回のみ）
-databricks apps create car-ai-demo --description "Car AI Demo - 車両提案AIアプリ"
+## 🧰 技術スタック
 
-# デプロイ
-databricks apps deploy car-ai-demo --source-code-path /Workspace/Users/your-email/car-ai-demo
-```
+- **フロントエンド**: React 19, TypeScript, TailwindCSS, Zustand, React Router
+- **バックエンド**: FastAPI, Python 3.11+, Databricks SDK, Databricks SQL Connector, OpenAI SDK (FM API 経由), MLflow Tracing
+- **インフラ**: Databricks Apps, Unity Catalog, Foundation Model API (Claude Sonnet 4), Genie, Agent Bricks
+- **デプロイ**: Databricks Asset Bundles (DAB)
 
-### 5. リソースの追加（UI経由）
-1. Compute > Apps > car-ai-demo > Edit
-2. "+ Add resource" をクリック
-3. SQL Warehouse を追加（key: `sql-warehouse`）
-4. 保存して再デプロイ
+---
 
-## プロジェクト構造
-
-```
-car-ai-demo/
-├── README.md               # このファイル
-├── app.yaml                # Databricks Apps設定
-├── .gitignore
-├── backend/
-│   ├── pyproject.toml
-│   ├── requirements.txt
-│   ├── run.py              # エントリーポイント
-│   └── app/
-│       ├── __init__.py
-│       ├── main.py         # FastAPIアプリケーション
-│       ├── config.py       # 設定管理
-│       ├── database.py     # DBコネクション
-│       ├── llm.py          # LLMクライアント
-│       ├── models.py       # Pydanticモデル
-│       └── routers/
-│           ├── __init__.py
-│           ├── customers.py
-│           ├── recommendations.py
-│           ├── chat.py
-│           └── admin.py
-└── frontend/
-    ├── package.json
-    ├── tsconfig.json
-    ├── vite.config.ts
-    ├── index.html
-    └── src/
-        ├── main.tsx
-        ├── App.tsx
-        ├── index.css
-        ├── api/
-        │   └── index.ts
-        ├── store/
-        │   └── index.ts
-        ├── types/
-        │   └── index.ts
-        ├── layouts/
-        │   ├── SalesLayout.tsx
-        │   └── AdminLayout.tsx
-        ├── components/
-        │   ├── common/
-        │   │   ├── Button.tsx
-        │   │   ├── Card.tsx
-        │   │   ├── Badge.tsx
-        │   │   ├── LoadingSpinner.tsx
-        │   │   └── MatchScore.tsx
-        │   └── chat/
-        │       └── ChatSidebar.tsx
-        └── pages/
-            ├── sales/
-            │   ├── CustomerList.tsx
-            │   └── CustomerDetail.tsx
-            └── admin/
-                ├── Dashboard.tsx
-                ├── TraceLogs.tsx
-                ├── GatewayMonitor.tsx
-                ├── Evaluations.tsx
-                └── DataCatalog.tsx
-```
-
-## Databricks設定
-
-| 項目 | 値 |
-|------|-----|
-| Workspace | e2-demo-field-eng.cloud.databricks.com |
-| Profile | DEFAULT |
-| Catalog | komae_demo_v4 |
-| Schema | car_ai_demo |
-| LLM Model | databricks-claude-sonnet-4 |
-
-## API エンドポイント
-
-### 顧客関連
-- `GET /api/customers` - 顧客一覧
-- `GET /api/customers/:id` - 顧客詳細
-- `GET /api/customers/:id/insights` - AIインサイト
-
-### 車両レコメンド
-- `GET /api/customers/:id/recommendations` - レコメンド取得
-- `POST /api/recommendations/regenerate` - 再生成
-
-### チャット
-- `POST /api/chat` - チャット（通常）
-- `POST /api/chat/stream` - ストリーミング
-- `GET /api/chat/history/:session` - 履歴取得
-
-### 管理者向け
-- `GET /api/admin/stats` - ダッシュボード統計
-- `GET /api/admin/traces` - MLflowトレース一覧
-- `GET /api/admin/gateway/metrics` - Gatewayメトリクス
-- `GET /api/admin/catalog/tables` - UCテーブル一覧
-- `POST /api/admin/evaluations` - 評価登録
-
-## ライセンス
+## 📜 ライセンス
 
 Demo Use Only

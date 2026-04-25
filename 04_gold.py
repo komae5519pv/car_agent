@@ -124,9 +124,22 @@ client = OpenAI(
 CATALOG = catalog_name
 SCHEMA = schema_name
 
+# ========== 開発用オプション (本番は設定しない) ==========
+# customer_limit: AI 処理対象の顧客数を制限 (開発時の時短用)
+#   未設定 or "0"  → 制限なし（全担当顧客を処理、本番モード）
+#   "3" など       → 指定数だけ処理（開発モード）
+try:
+    _limit_raw = dbutils.widgets.get("customer_limit")
+    CUSTOMER_LIMIT = int(_limit_raw) if _limit_raw and _limit_raw.isdigit() and int(_limit_raw) > 0 else None
+except Exception:
+    CUSTOMER_LIMIT = None
+# =========================================================
+
 print(f"LLM Model: {LLM_MODEL}")
 print(f"Schema: {CATALOG}.{SCHEMA}")
 print(f"Sales Rep: {SALES_REP_NAME}")
+if CUSTOMER_LIMIT:
+    print(f"⚠️ DEV MODE: customer_limit={CUSTOMER_LIMIT} (本番は未設定)")
 
 # COMMAND ----------
 
@@ -217,6 +230,12 @@ df_customers = spark.sql(f"""
     WHERE sales_rep_name = '{SALES_REP_NAME}'
 """)
 customer_rows = df_customers.collect()
+
+# 開発モードで件数制限 (customer_limit widget 指定時のみ)
+if CUSTOMER_LIMIT:
+    customer_rows = customer_rows[:CUSTOMER_LIMIT]
+    print(f"⚠️ DEV MODE: 先頭 {CUSTOMER_LIMIT} 件のみ処理")
+
 print(f"対象顧客数: {len(customer_rows)} 件（担当: {SALES_REP_NAME}）")
 
 # インタラクション履歴を取得（顧客ごとにグループ化用）

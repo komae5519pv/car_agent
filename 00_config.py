@@ -14,14 +14,17 @@
 # COMMAND ----------
 
 # MAGIC %md-sandbox
-# MAGIC <div style="border-left:4px solid #607d8b;background:#eceff1;border-radius:8px;padding:16px 20px;margin:16px 0;">
+# MAGIC <div style="border-left:4px solid #D32F2F;background:#FFEBEE;border-radius:8px;padding:16px 20px;margin:16px 0;">
 # MAGIC   <div style="display:flex;align-items:flex-start;gap:12px;">
-# MAGIC     <span style="font-size:20px;">⚙️</span>
+# MAGIC     <span style="font-size:20px;">⚠️</span>
 # MAGIC     <div>
-# MAGIC       <div style="font-weight:700;font-size:15px;margin-bottom:4px;">設定</div>
+# MAGIC       <div style="font-weight:700;font-size:15px;margin-bottom:4px;color:#D32F2F;">このファイルは編集しないでください</div>
 # MAGIC       <div style="font-size:14px;color:#333;line-height:1.6;">
-# MAGIC         このノートブックは全ハンズオンで共通使用する<strong>カタログ・スキーマ</strong>を設定します。<br/>
-# MAGIC         <strong>サーバレスコンピュート</strong>または<strong>SQL Warehouse</strong>で実行してください。
+# MAGIC         Catalog/Schema/モデル名/営業担当者名などを変更したい場合は、<br/>
+# MAGIC         プロジェクトルートの <code><strong>databricks.yml</strong></code> の <code>variables:</code> セクションを編集してください。<br/><br/>
+# MAGIC         このファイルは <code>databricks bundle run setup_demo</code> から実行された際、<br/>
+# MAGIC         databricks.yml の variables を widget 経由で受け取る<strong>橋渡し役</strong>です。<br/>
+# MAGIC         下のベタ書き値は「ノートブック単独デバッグ」用のフォールバックです。
 # MAGIC       </div>
 # MAGIC     </div>
 # MAGIC   </div>
@@ -29,30 +32,48 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,Step1: データパイプライン用（01〜04 実行前に設定）
-'''Step1: データパイプライン用（01〜04 実行前に設定）'''
-# Unity Catalog 設定
-catalog_name = "konomi_demo_catalog"        # 任意のカタログ名に変更してください
-schema_name = "car_ai_demo"                 # 任意のスキーマ名に変更してください
-VOLUME_NAME = "images"                      # 固定：車両画像を格納するボリューム名
-RAW_VOLUME_NAME = "raw_data"                # 固定：生データ格納用ボリューム名
-KNOWLEDGE_VOLUME_NAME = "knowledge"         # 固定：ナレッジアシスタント用テキスト格納ボリューム名
+# DBTITLE 1,設定値の取得（databricks.yml の variables を widget 経由で受け取る）
+'''
+実行モードごとの設定ソース:
 
-# LLM 設定
-LLM_MODEL = "databricks-claude-sonnet-4"    # Foundation Model API のモデル名
+  ① bundle run setup_demo 経由の場合（推奨）
+      databricks.yml の variables ──→ job parameters ──→ widget ──→ ここに反映
 
-# デモ担当営業（Gold レイヤーの AI 処理対象）
-SALES_REP_NAME = "大前 このみ"               # 任意の名前に変更してください（デモで使う営業担当者名）
+  ② ノートブック単独実行の場合（デバッグ用）
+      widget は未設定 → 各 _get_widget() の第2引数（フォールバック値）が使われる
+'''
 
-'''Step2: エージェント＆アプリ用（06〜08 の手順完了後に設定）'''
-# Genie Space ID（06_Genie作成手順 で作成後に記入）
-GENIE_VEHICLE_ASSISTANT_ID = "01f130f0423e1a6c86735b705148ccfa"   # 車両営業アシスタント Genie
-GENIE_MYPAGE_ID = "01f130f1da9a150caecac7a19f5b4317"              # マイページ Genie
-GENIE_DASHBOARD_ID = "01f130f284c21b4fb53fd6e6703731d7"           # ダッシュボード Genie
+# Unity Catalog / 環境設定の取得ヘルパー（widget 優先、未設定ならフォールバック）
+def _get_widget(name: str, default: str) -> str:
+    try:
+        return dbutils.widgets.get(name)
+    except Exception:
+        return default
 
-# Agent Bricks（07/08 の手順完了後に記入）
-KA_ENDPOINT_NAME = "ka-8f6c4a51-endpoint"             # ナレッジアシスタント エンドポイント名
-MAS_ENDPOINT_NAME = "mas-e9f1d14c-endpoint"            # マルチエージェントスーパーバイザー エンドポイント名
+# ---- widget 経由で DAB variables から注入される（★ここの値は編集しないで） ----
+#      ↓ databricks.yml の variables: セクションを編集すれば自動で反映されます
+catalog_name   = _get_widget("catalog",        "konomi_demo_catalog")   # ← var.catalog
+schema_name    = _get_widget("schema",         "car_agent")             # ← var.schema
+LLM_MODEL      = _get_widget("llm_model",      "databricks-claude-sonnet-4")  # ← var.llm_model
+SALES_REP_NAME = _get_widget("sales_rep_name", "大前 このみ")            # ← var.sales_rep_name
+
+# ---- 固定の設定（通常は変更不要） ----
+VOLUME_NAME           = "images"      # 車両画像を格納するボリューム名
+RAW_VOLUME_NAME       = "raw_data"    # 生データ格納用ボリューム名
+KNOWLEDGE_VOLUME_NAME = "knowledge"   # ナレッジアシスタント用テキスト格納ボリューム名
+
+# ---- Genie / Agent Bricks の ID について ----
+# 自動セットアップ (`databricks bundle run setup_demo`) を使う場合:
+#   セットアップ完了後、`{catalog}.{schema}._app_config` テーブルに ID が自動記録されます。
+#   アプリはそこから参照するので、ここに書く必要はありません。
+#
+# 手動で作成する場合（05〜07 のノートブック参照）:
+#   作成後にここに記入してください。
+GENIE_VEHICLE_ASSISTANT_ID = ""   # 車両営業アシスタント Genie Space ID
+GENIE_MYPAGE_ID            = ""   # 営業マイページ Genie Space ID
+GENIE_DASHBOARD_ID         = ""   # 営業データ Genie Space ID
+KA_ENDPOINT_NAME           = ""   # Knowledge Assistant serving endpoint 名
+MAS_ENDPOINT_NAME          = ""   # Multi-Agent Supervisor serving endpoint 名
 
 # COMMAND ----------
 
