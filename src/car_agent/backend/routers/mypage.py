@@ -361,6 +361,7 @@ async def _genie_poll(
             status = data.get("status", "")
 
             if status == "COMPLETED":
+                # Genie Space UI 相当の構造: text / sql / table の 3 要素
                 items: list[dict] = []
                 for att in data.get("attachments", []):
                     if "text" in att and att["text"].get("content"):
@@ -369,6 +370,8 @@ async def _genie_poll(
                         q = att["query"]
                         if q.get("description"):
                             items.append({"type": "text", "content": q["description"]})
+                        if q.get("query"):
+                            items.append({"type": "sql", "query": q["query"]})
                         att_id = att.get("attachment_id", "")
                         if att_id:
                             result_url = (
@@ -398,6 +401,56 @@ async def _genie_poll(
             await asyncio.sleep(2)
 
     raise TimeoutError("Genie response timeout")
+
+
+@router.get("/genie/space-info")
+async def get_genie_space_info() -> dict:
+    """マイページ Genie Space の埋め込み URL と ID を返す (iframe 用)。"""
+    settings = get_settings()
+    host = get_databricks_host()
+    space_id = settings.sales_mypage_genie_space_id
+    if not (host and space_id):
+        return {"space_id": "", "embed_url": ""}
+    # Databricks 公式 Genie Space UI を iframe で埋め込むための URL
+    embed_url = f"{host}/genie/rooms/{space_id}"
+    return {"space_id": space_id, "embed_url": embed_url}
+
+
+@router.get("/genie/sample-questions")
+async def get_genie_sample_questions() -> dict:
+    """マイページ Genie Space の sample_questions を返す (UI のクイック質問チップ用)。
+
+    失敗時は空配列を返して UI 側でフォールバック表示。
+    """
+    settings = get_settings()
+    host = get_databricks_host()
+    token = get_oauth_token()
+    space_id = settings.sales_mypage_genie_space_id
+    if not (host and token and space_id):
+        return {"questions": []}
+    url = f"{host}/api/2.0/genie/spaces/{space_id}?include_serialized_space=true"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+            if not resp.ok:
+                return {"questions": []}
+            data = resp.json()
+            serialized = data.get("serialized_space")
+            if not serialized:
+                return {"questions": []}
+            parsed = json.loads(serialized) if isinstance(serialized, str) else serialized
+            raw = parsed.get("config", {}).get("sample_questions", [])
+            questions: list[str] = []
+            for q in raw:
+                v = q.get("question")
+                if isinstance(v, list) and v:
+                    questions.append(v[0])
+                elif isinstance(v, str):
+                    questions.append(v)
+            return {"questions": questions}
+    except Exception as e:
+        print(f"[mypage/genie/sample-questions] error: {e}")
+        return {"questions": []}
 
 
 @router.get("/debug/genie")
@@ -457,68 +510,25 @@ async def mypage_chat_stream(request: MypageChatRequest):
 
             items = await _genie_poll(host, token, space_id, conv_id, msg_id)
 
-            text_items = [i for i in items if i["type"] == "text"]
-            table_items = [i for i in items if i["type"] == "table"]
-
-            if table_items:
-                yield f"data: {json.dumps({'type': 'progress', 'message': 'AIが結果を分析しています...'})}\n\n"
-                summary_prompt = _build_summary_prompt(
-                    request.message, text_items, table_items
-                )
-                try:
-                    stream = await llm.chat(
-                        messages=[{"role": "user", "content": summary_prompt}],
-                        max_tokens=800,
-                        temperature=0.3,
-                        stream=True,
-                    )
-                    async for chunk in stream:
-                        yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
-                except Exception as e:
-                    print(f"[mypage/chat] LLM summary failed: {e}")
-                    for item in text_items:
-                        content = item["content"]
-                        chunk_size = 30
-                        for i in range(0, len(content), chunk_size):
-                            yield f"data: {json.dumps({'type': 'content', 'content': content[i:i+chunk_size]})}\n\n"
-                            await asyncio.sleep(0.02)
-
-                for item in table_items:
-                    yield f"data: {json.dumps({'type': 'table', 'columns': item['columns'], 'rows': item['rows']})}\n\n"
+            # Genie 生回答をそのまま text / sql / table の順序で流す (LLM 後処理なし、公式 Space UI 相当)
+            if not items or all(
+                i.get("type") == "text" and not i.get("content", "").strip() for i in items
+            ):
+                yield f"data: {json.dumps({'type': 'content', 'content': '該当するデータが見つかりませんでした。別の質問をお試しください。'})}\n\n"
             else:
-                genie_text = "\n".join(i["content"] for i in text_items) if text_items else ""
-                if genie_text:
-                    refine_prompt = f"""あなたは中古車販売の営業データアナリストです。
-以下はデータ分析システム(Genie)からの回答ですが、質が低い可能性があります。
-ユーザーの質問に対して、Genieの回答を踏まえつつ、より簡潔で的確な回答に書き直してください。
-
-## ユーザーの質問
-{request.message}
-
-## Genieの回答
-{genie_text}
-
-## ルール
-- Genieが「見つかりませんでした」と言っている場合、「現在のデータセットでは該当データが確認できませんでした」と簡潔に伝え、考えられる理由を1文で補足する
-- Genieが質問を返している場合は無視し、質問に直接回答する形にする
-- 冗長な繰り返しは排除する
-- 3文以内で簡潔に"""
-                    try:
-                        stream = await llm.chat(
-                            messages=[{"role": "user", "content": refine_prompt}],
-                            max_tokens=400,
-                            temperature=0.3,
-                            stream=True,
-                        )
-                        async for chunk in stream:
-                            yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
-                    except Exception:
-                        chunk_size = 30
-                        for i in range(0, len(genie_text), chunk_size):
-                            yield f"data: {json.dumps({'type': 'content', 'content': genie_text[i:i+chunk_size]})}\n\n"
-                            await asyncio.sleep(0.02)
-                else:
-                    yield f"data: {json.dumps({'type': 'content', 'content': '該当するデータが見つかりませんでした。別の質問をお試しください。'})}\n\n"
+                for item in items:
+                    itype = item.get("type")
+                    if itype == "text":
+                        content = item.get("content", "")
+                        if content:
+                            chunk_size = 40
+                            for i in range(0, len(content), chunk_size):
+                                yield f"data: {json.dumps({'type': 'content', 'content': content[i:i+chunk_size]})}\n\n"
+                                await asyncio.sleep(0.01)
+                    elif itype == "sql":
+                        yield f"data: {json.dumps({'type': 'sql', 'query': item['query']})}\n\n"
+                    elif itype == "table":
+                        yield f"data: {json.dumps({'type': 'table', 'columns': item['columns'], 'rows': item['rows']})}\n\n"
 
             yield "data: [DONE]\n\n"
         except Exception as e:
