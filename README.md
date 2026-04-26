@@ -3,7 +3,7 @@
 Databricks 上で動く「中古車販売の営業担当者を支援する AI エージェント」デモです。
 Genie / Agent Bricks（Knowledge Assistant / Multi-Agent Supervisor）/ Databricks Apps / Unity Catalog を統合した**本番想定の構成**を、**SA がコマンド 3〜4 発で自ワークスペースに再現**できるようにパッケージ化しています。
 
-> 💡 **SA の方へ**：このデモを自分の環境で動かすには、下の [セットアップ手順](#-セットアップ手順4-コマンド) の通りに進めてください。所要時間は初回 15〜20 分。
+> 💡 **SA の方へ**：このデモを自分の環境で動かすには、下の [セットアップ手順](#-セットアップ手順4-コマンド) の通りに進めてください。所要時間は初回 10〜15 分（`build_gold` で LLM を呼ばず JSON + テンプレ生成にしているため軽量）。
 
 ---
 
@@ -23,7 +23,7 @@ Genie / Agent Bricks（Knowledge Assistant / Multi-Agent Supervisor）/ Databric
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Unity Catalog  <catalog>.<schema>                                    │
-│  ├─ テーブル ×30+ (sv_*, gd_*, mv_*)                                  │
+│  ├─ テーブル: bz_* (Bronze) / sv_* (Silver) / gd_* (Gold)             │
 │  ├─ Volume: images / raw_data / knowledge                             │
 │  └─ _app_config テーブル (App が起動時に参照する ID 一覧)              │
 ├──────────────────────────────────────────────────────────────────────┤
@@ -111,14 +111,17 @@ variables:
   llm_model:            { default: "databricks-claude-sonnet-4" }
 
   # ---- 開発モード（本番は触らない） ----
-  customer_limit:       { default: "" }                        # "3" などにすると gold の AI 処理を 3 顧客に制限
+  customer_limit:       { default: "" }                        # "10" 等で gold 処理対象を先頭 N 顧客に制限（デバッグ用）
 ```
 
-> **SA が触るのはこのファイルだけ**です。他の設定ファイル（`app.yaml`, `00_config.py` など）は触る必要ありません。
+> **SA が触るのはこのファイル 1 つだけ**です。`app.yaml` / `00_config.py` / `src/car_agent/backend/config.py` などは編集不要。
 >
-> 仕組み:
-> - **Job / Notebook**: `databricks.yml` の `variables:` → `resources/setup_job.yml` の `parameters:` → 各 notebook の `dbutils.widgets.get(...)` という経路で伝搬します。
-> - **Databricks App**: `databricks.yml` の `variables:` → `resources/app.yml` の `config.env:` で `${var.*}` 展開され、App 起動時の環境変数として渡ります。ルート直下の `app.yaml` は最小構成のフォールバックで、DAB デプロイ時はこれが上書きされます。
+> <details><summary>仕組み（興味ある人向け）</summary>
+>
+> - **Job / Notebook**：`databricks.yml` の `variables:` → `resources/setup_job.yml` の `parameters:` → notebook の `dbutils.widgets.get(...)` で伝搬
+> - **Databricks App**：`databricks.yml` の `variables:` → `resources/app.yml` の `config.env:` で `${var.*}` 展開 → App 起動時の env へ（ルートの `app.yaml` は最小フォールバック、DAB デプロイで上書きされます）
+>
+> </details>
 
 CLI で一時的に上書きも可能：
 
@@ -132,17 +135,17 @@ databricks bundle deploy --var catalog=my_catalog --var schema=my_demo
 # 4-1. バンドルデプロイ (Job + App リソースのガワを作る、約 30 秒)
 databricks bundle deploy --profile <自分のプロファイル>
 
-# 4-2. セットアップ Job 実行 (全自動、本番 15-20 分 / 開発 5-10 分)
+# 4-2. セットアップ Job 実行 (全自動、10〜15 分)
 databricks bundle run setup_demo --profile <自分のプロファイル>
 
 # 4-3. App デプロイ (コードを配置して起動、約 2-3 分)
 databricks bundle run car_agent --profile <自分のプロファイル>
 ```
 
-**開発中で早く回したい場合**（gold の AI 処理を 3 顧客に制限）：
+**開発中で対象顧客を絞りたい場合**（デモ主役の 10 名だけ処理）：
 
 ```bash
-databricks bundle run setup_demo --profile <プロファイル> --params customer_limit=3
+databricks bundle run setup_demo --profile <プロファイル> --params customer_limit=10
 ```
 
 ### Step 5. App とダッシュボードを開く
@@ -174,10 +177,10 @@ Step 4-3 完了後、App URL をブラウザで開けばデモを開始できま
 
 | # | タスク | 所要 | 何をするか |
 |---|---|---|---|
-| 1 | `setup_demo_data` | 30 秒 | UC Catalog / Schema / Volume 作成、生データ CSV を Volume に配置、車両画像をコピー |
+| 1 | `setup_demo_data` | 30 秒 | UC Catalog / Schema / Volume 作成、生データ CSV を Volume に配置、車両画像をコピー。デモ主役 10 名の商談録音・LINE・CC ログは `setup/demo_interactions_data.json` から読込 |
 | 2 | `build_bronze` | 1 分 | 生データ → Bronze テーブル |
 | 3 | `build_silver` | 2 分 | Bronze → Silver（クレンジング・正規化） |
-| 4 | `build_gold` | 5-10 分 | Silver → Gold（LLM で顧客インサイト / 車両推薦 / 営業トーク生成） |
+| 4 | `build_gold` | 30-60 秒 | Silver → Gold。**LLM 呼び出しなし**：デモ主役 10 名は `setup/gold_prebuilt_data.json` の手作りインサイト/レコメンドを使用、残りは顧客プロフィールからの決定論テンプレで生成（LLM 生成コードは `04_gold.py` 内にコメントアウトで保持、デモで見せられる状態） |
 | 5 | `create_genies` | 30 秒 | Genie Space ×3 を `setup/genie_spaces.yaml` に従って作成 |
 | 6 | `create_ka` | 5-10 分 | Knowledge Assistant を作成、Volume のドキュメントをインデックス化 |
 | 7 | `create_mas` | 1-3 分 | Multi-Agent Supervisor を作成（Genie ×3 + KA を束ねる） |
@@ -186,7 +189,7 @@ Step 4-3 完了後、App URL をブラウザで開けばデモを開始できま
 | 10 | `create_dashboard` | 30 秒 | `車両販売ダッシュボード.lvdash.json` を catalog/schema/Genie ID 置換して Lakeview API でデプロイ、埋め込み認証で公開 |
 | 11 | `print_summary` | 10 秒 | 作成物の URL/ID 一覧（App / Dashboard / Genie / KA / MAS）を出力 |
 
-タスク間の依存関係は DAG で管理されており、gold 完了後は Genie と KA が並列実行されます。
+タスク間の依存関係は DAG で管理されており、gold 完了後は Genie と KA が並列実行されます。Job 全体の所要は **10〜15 分**（KA の埋め込み生成がボトルネック）。
 
 ### `databricks bundle run car_agent` の動作
 
@@ -210,9 +213,9 @@ car_ai_agent/
 ├── 01_setup_demo_data.py       データパイプライン（01〜04 は Job 経由で自動実行）
 ├── 02_bronze.py
 ├── 03_silver.py
-├── 04_gold.py
+├── 04_gold.py                  LLM 呼ばずに JSON / テンプレから Gold 生成（LLM コードはコメントで保持）
 │
-├── app.yaml                    Databricks App ランタイム設定
+├── app.yaml                    ⚠️ 最小フォールバック（本体は resources/app.yml の config.env、DAB 時に上書き）
 ├── 車両販売ダッシュボード.lvdash.json   AI/BI ダッシュボード定義
 ├── pyproject.toml / requirements.txt
 │
@@ -220,16 +223,19 @@ car_ai_agent/
 ├── app/frontend/               React ソース
 ├── src/car_agent/              Python バックエンド (+ ビルド済みフロントエンド)
 │
-├── docs/                       📚 【参考】手動セットアップ手順書
+├── docs/                       📚 参考ドキュメント（手動セットアップ等）
 │   ├── README.md
 │   ├── DEMO_SCENARIO.md
+│   ├── DEMO_SCENARIO_COMPETITION.md  デモコンペ用の台本（営業画面 → 管理者画面 → マイページ）
 │   └── 【参考】Genie作成手順.py など
 │
 ├── resources/                  ⚙️ DAB リソース定義（SA は触らない）
-│   ├── setup_job.yml
-│   └── app.yml
+│   ├── setup_job.yml           Job 定義 + parameters（databricks.yml の variables を widget に橋渡し）
+│   └── app.yml                 App 定義 + config.env（databricks.yml の variables を env に橋渡し）
 │
-├── setup/                      ⚙️ 自動化スクリプト（Job が呼ぶ）
+├── setup/                      ⚙️ 自動化スクリプト + デモデータ（Job が読む）
+│   ├── demo_interactions_data.json  デモ主役 10 名の商談録音・LINE会話・CC ログ（手作り）
+│   ├── gold_prebuilt_data.json      デモ主役 10 名の顧客インサイト・車両レコメンド（手作り）
 │   ├── genie_spaces.yaml       Genie の中身（instructions/sample_questions 等）
 │   ├── knowledge_assistant.yaml KA の中身
 │   ├── multi_agent_supervisor.yaml MAS の中身
@@ -365,9 +371,11 @@ databricks bundle run setup_demo --only create_genies,create_mas,grant_app_perms
 ## 🧰 技術スタック
 
 - **フロントエンド**: React 19, TypeScript, TailwindCSS, Zustand, React Router
-- **バックエンド**: FastAPI, Python 3.11+, Databricks SDK, Databricks SQL Connector, OpenAI SDK (FM API 経由), MLflow Tracing
-- **インフラ**: Databricks Apps, Unity Catalog, Foundation Model API (Claude Sonnet 4), Genie, Agent Bricks, AI/BI Dashboard (Lakeview)
+- **バックエンド**: FastAPI, Python 3.11+, Databricks SDK, Databricks SQL Connector, OpenAI SDK (FM API 経由、Ask AI で使用), MLflow Tracing
+- **インフラ**: Databricks Apps, Unity Catalog, Foundation Model API (Claude Sonnet 4), Genie, Agent Bricks (KA + MAS), AI/BI Dashboard (Lakeview)
 - **デプロイ**: Databricks Asset Bundles (DAB)
+
+> ⓘ パイプラインの `build_gold` は速度優先で LLM を呼ばず JSON / テンプレで生成しています。LLM 生成コードは `04_gold.py` 内にコメントアウトで残してあり、デモの中で「本来なら LLM でこう書ける」と見せられます。
 
 ---
 
