@@ -368,6 +368,9 @@ _prebuilt_insights = PREBUILT_DATA.get("insights", {})
 
 def _template_insight(c) -> dict:
     """プロフィールから機械的にインサイトを生成（LLM 不使用）。"""
+    # pyspark.sql.Row は .get() を持たないため dict 化する
+    if hasattr(c, "asDict"):
+        c = c.asDict()
     persona = c.get("persona_type") or "個人ユーザー"
     family = c.get("family_detail") or "個人"
     prefs = c.get("preferences") or "バランス重視"
@@ -603,6 +606,9 @@ rec_records = []
 
 def _template_recommendations(c, inventory_list):
     """予算内の在庫から、予算に近い順に top 3 を選ぶ決定論ロジック。"""
+    # pyspark.sql.Row は .get() を持たないため dict 化する
+    if hasattr(c, "asDict"):
+        c = c.asDict()
     budget_max = c.get("budget_max") or c.get("budget") or 0
     preferences = (c.get("preferences") or "").strip() or "バランスの取れた1台"
     persona = c.get("persona_type") or ""
