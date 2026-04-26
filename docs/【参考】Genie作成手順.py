@@ -260,15 +260,34 @@
 # MAGIC <div style="border-left: 4px solid #F57C00; background-color: #FFF3E0; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 10px 0;">
 # MAGIC   <h2 style="color: #F57C00; margin-top: 0;">🔧 UC 関数を Genie に登録（全 3 Genie 共通）</h2>
 # MAGIC   <p>Genie が「ログインユーザーのメールアドレス」を取得できるよう、UC 関数 <code>current_sales_rep_email()</code> を各 Genie の <b>Curated functions</b> に追加します。</p>
-# MAGIC   <p>関数の実体: パイプラインが <code>{catalog}.{schema}.current_sales_rep_email()</code> を自動作成しているので、関数を新規作成する必要はなく、Genie UI で登録するだけです。</p>
+# MAGIC </div>
+# MAGIC
+# MAGIC ### 関数定義（パイプラインが自動作成）
+# MAGIC
+# MAGIC ```sql
+# MAGIC -- 中古車販売の営業担当のメールアドレスを取得する関数
+# MAGIC CREATE OR REPLACE FUNCTION {catalog}.{schema}.current_sales_rep_email()
+# MAGIC RETURNS TABLE(email STRING)
+# MAGIC COMMENT '中古車販売の営業担当の情報（メールアドレス）を取得する関数'
+# MAGIC RETURN SELECT current_user() AS email;
+# MAGIC
+# MAGIC -- 動作確認
+# MAGIC SELECT * FROM {catalog}.{schema}.current_sales_rep_email();
+# MAGIC ```
+# MAGIC
+# MAGIC > パイプライン (`setup/create_genies.py`) がデプロイ時に既に `CREATE OR REPLACE` を実行しているため、通常は関数を新規作成する必要はなく Genie UI で登録するだけで済みます。手動でセットアップする場合は、Databricks SQL エディタに上の SQL を貼って実行してください。
+# MAGIC
+# MAGIC ### Genie への登録手順（各 Space で実施）
+# MAGIC
+# MAGIC <div style="border-left: 4px solid #F57C00; background-color: #FFF3E0; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 10px 0;">
 # MAGIC   <ol>
 # MAGIC     <li>Genie Space を開く</li>
 # MAGIC     <li>右上「⚙️ Settings」→ <b>Instructions</b> タブ</li>
 # MAGIC     <li><b>「Curated functions」</b> セクション → <b>+ Add function</b></li>
-# MAGIC     <li>検索欄に <code>current_sales_rep_email</code> と入力 → 該当関数を選択 → <b>Save</b></li>
+# MAGIC     <li>検索欄に <code>current_sales_rep_email</code> と入力 → <code>{catalog}.{schema}.current_sales_rep_email</code> を選択 → <b>Save</b></li>
 # MAGIC     <li>同じ操作を Genie 2 / Genie 3 にも実施</li>
 # MAGIC   </ol>
-# MAGIC   <p style="color: #E65100; font-weight: bold;">※ 上記「General Instructions」本文にも current_sales_rep_email() の参照が含まれているため、関数登録と指示本文のコピーは両方必要です。</p>
+# MAGIC   <p style="color: #E65100; font-weight: bold;">※ 各 Genie の「General Instructions」本文にも <code>current_sales_rep_email()</code> の参照が含まれているため、関数登録と指示本文のコピーは両方必要です。</p>
 # MAGIC </div>
 
 # COMMAND ----------
