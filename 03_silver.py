@@ -350,7 +350,7 @@ VEHICLE_CATS = {
 }
 
 REPS = [
-    ("REP-001", "大前 このみ", "関東", "konomi.omae@databricks.com"),
+    ("REP-001", SALES_REP_NAME, "関東", SALES_REP_EMAIL),
     ("REP-002", "山田 花子",   "関東", "hanako.yamada@example.com"),
     ("REP-003", "鈴木 一郎",   "関東", "ichiro.suzuki@example.com"),
     ("REP-004", "高橋 健太",   "東海", "kenta.takahashi@example.com"),
@@ -428,18 +428,5 @@ for t in ["sv_customers", "sv_vehicle_inventory", "sv_interactions", "sv_web_bro
     print(f"  {t:<30s} {spark.table(t).count():>10,} 件")
 print("✓ Silver 加工完了")
 
-# COMMAND ----------
-
-# MAGIC %md-sandbox
-# MAGIC ## 🔑 アプリ用サービスプリンシパルへの権限付与
-# MAGIC <div style="border-left: 4px solid #F57C00; background: #FFF3E0; padding: 14px 18px; border-radius: 6px; margin-bottom: 10px;">
-# MAGIC   <strong>⚠️ 注意</strong> — テーブルを overwrite で再作成するとスキーマレベルの GRANT が消失するため、毎回再付与が必要です。
-# MAGIC </div>
-
-# COMMAND ----------
-
-APP_SERVICE_PRINCIPAL = "66fd7c16-fe48-408e-8272-9d2b19513393"
-for grant in ["USE SCHEMA", "SELECT", "READ VOLUME"]:
-    spark.sql(f"GRANT {grant} ON SCHEMA {schema_name} TO `{APP_SERVICE_PRINCIPAL}`")
-    print(f"  ✓ GRANT {grant} ON SCHEMA {schema_name}")
-print("✓ サービスプリンシパル権限付与完了")
+# NOTE: アプリ SP への権限付与は setup/grant_app_perms.py で動的に実行します
+# （App を名前で取得 → service_principal_client_id を動的解決 → GRANT）。

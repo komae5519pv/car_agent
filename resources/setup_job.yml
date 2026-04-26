@@ -30,6 +30,8 @@ resources:
           default: ${var.schema}
         - name: sales_rep_name
           default: ${var.sales_rep_name}
+        - name: sales_rep_email
+          default: ${var.sales_rep_email}
         - name: llm_model
           default: ${var.llm_model}
         - name: app_name
@@ -59,10 +61,11 @@ resources:
           notebook_task:
             notebook_path: ../01_setup_demo_data.py
             base_parameters:
-              catalog:        "{{job.parameters.catalog}}"
-              schema:         "{{job.parameters.schema}}"
-              sales_rep_name: "{{job.parameters.sales_rep_name}}"
-              llm_model:      "{{job.parameters.llm_model}}"
+              catalog:          "{{job.parameters.catalog}}"
+              schema:           "{{job.parameters.schema}}"
+              sales_rep_name:   "{{job.parameters.sales_rep_name}}"
+              sales_rep_email:  "{{job.parameters.sales_rep_email}}"
+              llm_model:        "{{job.parameters.llm_model}}"
 
         # 2. Bronze レイヤー
         - task_key: build_bronze
@@ -85,10 +88,11 @@ resources:
           notebook_task:
             notebook_path: ../03_silver.py
             base_parameters:
-              catalog:        "{{job.parameters.catalog}}"
-              schema:         "{{job.parameters.schema}}"
-              sales_rep_name: "{{job.parameters.sales_rep_name}}"
-              llm_model:      "{{job.parameters.llm_model}}"
+              catalog:          "{{job.parameters.catalog}}"
+              schema:           "{{job.parameters.schema}}"
+              sales_rep_name:   "{{job.parameters.sales_rep_name}}"
+              sales_rep_email:  "{{job.parameters.sales_rep_email}}"
+              llm_model:        "{{job.parameters.llm_model}}"
 
         # 4. Gold レイヤー
         - task_key: build_gold

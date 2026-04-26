@@ -4,6 +4,8 @@ MLflow TracingおよびServing Endpointの実際のデータ構造を反映し�
 LLMOps導入を検討している顧客へのデモ用。
 """
 
+import json as _json
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -23,6 +25,18 @@ from car_agent.backend.models import (
 )
 from car_agent.backend.config import get_settings, get_full_table_name
 from car_agent.backend.demo_data import DEMO_CUSTOMERS
+
+
+def _primary_rep_email() -> str:
+    """EMAIL_REP_MAPPING env から最初のメールアドレスを取り出す（デモ主役の営業担当）。
+    設定がない場合は空文字にフォールバック。"""
+    try:
+        mapping = _json.loads(os.environ.get("EMAIL_REP_MAPPING", "{}"))
+        if isinstance(mapping, dict) and mapping:
+            return next(iter(mapping.keys()))
+    except Exception:
+        pass
+    return ""
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -415,7 +429,7 @@ async def get_gateway_metrics() -> APIResponse:
         endpoint_info = {
             "name": settings.llm_model,
             "state": "READY",
-            "creator": "konomi.omae@databricks.com",
+            "creator": _primary_rep_email(),
             "creation_timestamp": int((datetime.now() - timedelta(days=30)).timestamp() * 1000),
             "last_updated_timestamp": int((datetime.now() - timedelta(hours=2)).timestamp() * 1000),
             "config": {

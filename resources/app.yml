@@ -4,10 +4,16 @@
 # 配布物:
 #   src/car_agent/                  Python パッケージ (FastAPI backend)
 #   src/car_agent/__dist__/         ビルド済みフロントエンド
-#   app.yaml                        App ランタイム設定 (command, env)
+#   app.yaml                        App ランタイム設定 (command のみ)
 #
 # 起動エントリポイント:
 #   uvicorn car_agent.backend.app:app
+#
+# ----- 環境変数の扱い -----
+# App が参照する env は **この YAML の config.env** で一元管理しています。
+# ここで ${var.*} 経由で databricks.yml の variables と連動するため、
+# 別 SA が databricks.yml だけ書き換えれば App も正しく追従します。
+# （注: app.yaml は同じキーを書いてもこちらが優先されます）
 # ====================================================================
 
 resources:
@@ -20,6 +26,35 @@ resources:
 
       # デプロイされた /files/ 配下を app ソースとして使う
       source_code_path: ${workspace.file_path}
+
+      # ---- App ランタイム設定（app.yaml を上書き） ----
+      config:
+        command: ["uvicorn", "car_agent.backend.app:app", "--workers", "2"]
+        env:
+          - name: 'PYTHONPATH'
+            value: 'src'
+
+          # Unity Catalog (_app_config テーブルの場所)
+          - name: 'CATALOG'
+            value: ${var.catalog}
+          - name: 'SCHEMA_NAME'
+            value: ${var.schema}
+
+          # SQL Warehouse (_app_config + データ取得)
+          - name: 'DATABRICKS_WAREHOUSE_ID'
+            value: ${var.warehouse_id}
+
+          # LLM デフォルト
+          - name: 'LLM_MODEL'
+            value: ${var.llm_model}
+
+          # Email → 営業担当名マッピング (JSON)
+          - name: 'EMAIL_REP_MAPPING'
+            value: '{"${var.sales_rep_email}":"${var.sales_rep_name}"}'
+
+          # Application
+          - name: 'DEBUG'
+            value: 'false'
 
       # ---- App が参照するリソース ----
       # 各リソースには permission を指定、app の service principal に付与される

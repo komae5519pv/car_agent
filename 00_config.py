@@ -52,10 +52,11 @@ def _get_widget(name: str, default: str) -> str:
 
 # ---- widget 経由で DAB variables から注入される（★ここの値は編集しないで） ----
 #      ↓ databricks.yml の variables: セクションを編集すれば自動で反映されます
-catalog_name   = _get_widget("catalog",        "konomi_demo_catalog")   # ← var.catalog
-schema_name    = _get_widget("schema",         "car_agent")             # ← var.schema
-LLM_MODEL      = _get_widget("llm_model",      "databricks-claude-sonnet-4")  # ← var.llm_model
-SALES_REP_NAME = _get_widget("sales_rep_name", "大前 このみ")            # ← var.sales_rep_name
+catalog_name    = _get_widget("catalog",         "konomi_demo_catalog")   # ← var.catalog
+schema_name     = _get_widget("schema",          "car_agent")             # ← var.schema
+LLM_MODEL       = _get_widget("llm_model",       "databricks-claude-sonnet-4")  # ← var.llm_model
+SALES_REP_NAME  = _get_widget("sales_rep_name",  "大前 このみ")            # ← var.sales_rep_name
+SALES_REP_EMAIL = _get_widget("sales_rep_email", "konomi.omae@databricks.com")  # ← var.sales_rep_email
 
 # ---- 固定の設定（通常は変更不要） ----
 VOLUME_NAME           = "images"      # 車両画像を格納するボリューム名

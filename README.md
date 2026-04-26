@@ -115,6 +115,10 @@ variables:
 ```
 
 > **SA が触るのはこのファイルだけ**です。他の設定ファイル（`app.yaml`, `00_config.py` など）は触る必要ありません。
+>
+> 仕組み:
+> - **Job / Notebook**: `databricks.yml` の `variables:` → `resources/setup_job.yml` の `parameters:` → 各 notebook の `dbutils.widgets.get(...)` という経路で伝搬します。
+> - **Databricks App**: `databricks.yml` の `variables:` → `resources/app.yml` の `config.env:` で `${var.*}` 展開され、App 起動時の環境変数として渡ります。ルート直下の `app.yaml` は最小構成のフォールバックで、DAB デプロイ時はこれが上書きされます。
 
 CLI で一時的に上書きも可能：
 

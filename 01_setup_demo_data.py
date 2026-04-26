@@ -74,7 +74,7 @@ random.seed(42)
 
 # ---------- 営業担当者 10名 ----------
 SALES_REPS = [
-    ("REP-001", SALES_REP_NAME, "konomi.omae@databricks.com"),
+    ("REP-001", SALES_REP_NAME, SALES_REP_EMAIL),
     ("REP-002", "山田 花子", "hanako.yamada@example.com"),
     ("REP-003", "鈴木 一郎", "ichiro.suzuki@example.com"),
     ("REP-004", "高橋 健太", "kenta.takahashi@example.com"),
@@ -296,7 +296,7 @@ for i, cust in enumerate(DETAILED_CUSTOMERS):
         "customer_id": f"CUST-{i+1:04d}",
         "sales_rep_id": "REP-001",
         "sales_rep_name": SALES_REP_NAME,
-        "sales_rep_email": "konomi.omae@databricks.com",
+        "sales_rep_email": SALES_REP_EMAIL,
         "contact_name": cust["contact_name"],
         "age": cust["age"],
         "gender": cust["gender"],

@@ -1,15 +1,13 @@
 # ====================================================================
 # Databricks Apps runtime configuration (car-agent)
 #
-# 以下のうち環境変数で渡すのは「アプリ起動に必要な最小限」のみ:
-#   - CATALOG / SCHEMA_NAME    : _app_config テーブルの場所
-#   - DATABRICKS_WAREHOUSE_ID  : SQL Warehouse (_app_config 読み取り + データ取得)
-#   - PYTHONPATH               : src レイアウト
-#   - LLM_MODEL                : Foundation Model 名 (デフォルト)
-#   - EMAIL_REP_MAPPING        : 営業担当メールとの対応
+# ⚠️ 重要: App の env とコマンドは resources/app.yml の `config:` で
+# 一元管理しています。Databricks Asset Bundle 経由でデプロイすると
+# この app.yaml は DAB の config: に上書きされます。
 #
-# Genie ID / KA endpoint / MAS endpoint はアプリ起動時に
-# {CATALOG}.{SCHEMA_NAME}._app_config から動的に読み込まれます。
+# この app.yaml は手動で app を deploy する際のフォールバックとして残す
+# 最小構成のみです。通常は触る必要ありません。
+# 設定を変更したい場合は **databricks.yml の variables:** を編集してください。
 # ====================================================================
 
 command: ["uvicorn", "car_agent.backend.app:app", "--workers", "2"]
@@ -17,25 +15,5 @@ command: ["uvicorn", "car_agent.backend.app:app", "--workers", "2"]
 env:
   - name: 'PYTHONPATH'
     value: 'src'
-
-  # Unity Catalog (_app_config テーブルの場所)
-  - name: 'CATALOG'
-    value: 'konomi_demo_catalog'
-  - name: 'SCHEMA_NAME'
-    value: 'car_agent'
-
-  # SQL Warehouse (_app_config + データ取得)
-  - name: 'DATABRICKS_WAREHOUSE_ID'
-    value: '348478745ad64b30'
-
-  # LLM デフォルト
-  - name: 'LLM_MODEL'
-    value: 'databricks-claude-sonnet-4'
-
-  # Email → 営業担当名マッピング (JSON)
-  - name: 'EMAIL_REP_MAPPING'
-    value: '{"konomi.omae@databricks.com":"大前 このみ"}'
-
-  # Application
   - name: 'DEBUG'
     value: 'false'
