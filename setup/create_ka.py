@@ -119,11 +119,19 @@ print(f"  ✓ KA [{action}] {ka_name} (id={ka_id}, endpoint={endpoint_name})")
 
 # COMMAND ----------
 
-# DBTITLE 1,Knowledge Sources の作成/更新（冪等）
+# DBTITLE 1,Knowledge Sources の作成/更新（冪等）+ 孤立 source の削除
 # 既存 sources を取得
 sources_resp = _api("GET", f"/api/2.1/{ka_full_name}/knowledge-sources")
 existing_sources = {s.get("display_name"): s for s in sources_resp.get("knowledge_sources", [])}
+yaml_source_names = {src["display_name"] for src in config["sources"]}
 
+# YAML に存在しない既存 source は削除（YAML を唯一の真実として扱う）
+for name, existing_src in existing_sources.items():
+    if name not in yaml_source_names:
+        _api("DELETE", f"/api/2.1/{existing_src['name']}")
+        print(f"  ✓ Source [deleted] {name} (YAML にないため)")
+
+# YAML に定義された source を create or update
 for src in config["sources"]:
     src_payload = {
         "display_name": src["display_name"],
