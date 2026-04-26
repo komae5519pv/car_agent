@@ -184,7 +184,7 @@ def parse_json_response(text: str):
 # MAGIC <div style="border-left: 4px solid #1976d2; background-color: #e3f2fd; padding: 15px 20px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
 # MAGIC   <div style="font-weight: bold; color: #1976d2; margin-bottom: 5px;">1. gd_customer_insights</div>
 # MAGIC   <div style="color: #0D47A1;">
-# MAGIC     各顧客の属性・インタラクション履歴・カーセンサー閲覧行動を分析し、<br>
+# MAGIC     各顧客の属性・インタラクション履歴・Web 閲覧行動を分析し、<br>
 # MAGIC     <b>深層ニーズ</b>・<b>購買シグナル</b>・<b>チャネル別インサイト</b>を LLM で生成します。<br>
 # MAGIC     MERGE（upsert）で差分更新するため、再実行しても既存データを安全に更新できます。
 # MAGIC   </div>
@@ -209,7 +209,7 @@ CREATE TABLE {CATALOG}.{SCHEMA}.gd_customer_insights (
     channel_insight_visit STRING COMMENT 'LLM生成：来店チャネルインサイト',
     channel_insight_line STRING COMMENT 'LLM生成：LINEチャネルインサイト',
     channel_insight_cc STRING COMMENT 'LLM生成：コールセンターチャネルインサイト',
-    channel_insight_carsensor STRING COMMENT 'LLM生成：カーセンサーチャネルインサイト',
+    channel_insight_web STRING COMMENT 'LLM生成：Web 閲覧履歴チャネルインサイト',
     key_quotes_json STRING COMMENT 'LLM生成：顧客の印象的な発言（JSON配列文字列）',
     summary STRING COMMENT 'LLM生成：顧客の本音サマリ（20-30文字）',
     processed_at TIMESTAMP COMMENT '処理日時',
@@ -222,7 +222,7 @@ print("gd_customer_insights テーブル準備完了")
 
 # COMMAND ----------
 
-# DBTITLE 1,対象顧客・インタラクション・カーセンサーデータ取得
+# DBTITLE 1,対象顧客・インタラクション・Web 閲覧データ取得
 # 対象顧客を取得
 df_customers = spark.sql(f"""
     SELECT *
@@ -254,27 +254,27 @@ for row in interactions_all:
         interactions_by_customer[cid] = []
     interactions_by_customer[cid].append(row)
 
-# カーセンサー行動を取得（sf_opportunity_id でジョイン）
-df_carsensor = spark.sql(f"""
+# Web 閲覧行動を取得（sf_opportunity_id でジョイン）
+df_web = spark.sql(f"""
     SELECT *
-    FROM {CATALOG}.{SCHEMA}.sv_carsensor_behavior
+    FROM {CATALOG}.{SCHEMA}.sv_web_browsing_behavior
 """)
-carsensor_all = df_carsensor.collect()
+web_all = df_web.collect()
 
-# sf_opportunity_id → カーセンサーデータの辞書
-carsensor_by_opp = {}
-for row in carsensor_all:
-    carsensor_by_opp[row["sf_opportunity_id"]] = row
+# sf_opportunity_id → Web 閲覧データの辞書
+web_by_opp = {}
+for row in web_all:
+    web_by_opp[row["sf_opportunity_id"]] = row
 
 print(f"インタラクション: {len(interactions_all)} 件")
-print(f"カーセンサー行動: {len(carsensor_all)} 件")
+print(f"Web 閲覧行動: {len(web_all)} 件")
 
 # COMMAND ----------
 
 # DBTITLE 1,インサイト生成プロンプト
 
 INSIGHT_SYSTEM_PROMPT = """あなたは中古車販売会社の顧客分析AIです。
-顧客の来店記録・LINEメッセージ・コールセンター通話・カーセンサー閲覧履歴を分析し、
+顧客の来店記録・LINEメッセージ・コールセンター通話・Web 閲覧履歴を分析し、
 顧客の深層ニーズと購買意欲を抽出してください。
 
 【重要】各項目は簡潔に。長い文章は禁止。体言止め・短縮表現を使い、ぱっと見でわかる短さにすること。
@@ -290,15 +290,15 @@ INSIGHT_SYSTEM_PROMPT = """あなたは中古車販売会社の顧客分析AIで
     "visit": "1文で簡潔に（40文字以内）",
     "line": "1文で簡潔に（40文字以内）",
     "callcenter": "1文で簡潔に（40文字以内）",
-    "carsensor": "1文で簡潔に（40文字以内）"
+    "web": "1文で簡潔に（40文字以内）"
   },
   "key_quotes": ["印象的な発言1（25〜40文字の口語体）", "例：子供たちが快適に座れる車がいいんですよね", "例：義母の乗り降りが楽な車がいいなと思って"],
   "summary": "顧客の本音を一言で（20〜30文字）例：家族全員が快適に乗れる車が欲しい"
 }"""
 
 
-def build_insight_prompt(customer_row, interactions, carsensor):
-    """顧客情報・インタラクション・カーセンサー行動からプロンプトを構築"""
+def build_insight_prompt(customer_row, interactions, web):
+    """顧客情報・インタラクション・Web 閲覧行動からプロンプトを構築"""
     lines = [
         f"顧客名: {customer_row['contact_name']}",
         f"年齢: {customer_row['age']}歳",
@@ -315,14 +315,14 @@ def build_insight_prompt(customer_row, interactions, carsensor):
         lines.append(row["content"][:500])
         lines.append("")
 
-    if carsensor:
+    if web:
         lines += [
-            "【カーセンサー閲覧行動】",
-            f"総セッション数: {carsensor['session_count']}",
-            f"総閲覧数: {carsensor['view_count']}",
-            f"検索キーワード: {carsensor['search_keywords']}",
-            f"閲覧車両: {carsensor['viewed_vehicles']}",
-            f"お気に入り登録数: {carsensor['favorite_count']}件",
+            "【Web 閲覧行動】",
+            f"総セッション数: {web['session_count']}",
+            f"総閲覧数: {web['view_count']}",
+            f"検索キーワード: {web['search_keywords']}",
+            f"閲覧車両: {web['viewed_vehicles']}",
+            f"お気に入り登録数: {web['favorite_count']}件",
         ]
 
     return "\n".join(lines)
@@ -339,10 +339,10 @@ for i, c in enumerate(customer_rows):
 
     # インタラクション取得
     interactions = interactions_by_customer.get(cid, [])
-    # カーセンサー行動取得（sf_opportunity_id で参照）
-    carsensor = carsensor_by_opp.get(opp_id)
+    # Web 閲覧行動取得（sf_opportunity_id で参照）
+    web = web_by_opp.get(opp_id)
 
-    user_prompt = build_insight_prompt(c, interactions, carsensor)
+    user_prompt = build_insight_prompt(c, interactions, web)
 
     try:
         raw = call_llm(INSIGHT_SYSTEM_PROMPT, user_prompt)
@@ -355,7 +355,7 @@ for i, c in enumerate(customer_rows):
             "decision_key": "生成エラー",
             "purchase_urgency": "中",
             "urgency_reason": "生成エラー",
-            "channel_insights": {"visit": "", "line": "", "callcenter": "", "carsensor": ""},
+            "channel_insights": {"visit": "", "line": "", "callcenter": "", "web": ""},
             "summary": "生成エラー",
         }
 
@@ -374,7 +374,7 @@ for i, c in enumerate(customer_rows):
         "channel_insight_visit": ch.get("visit", ""),
         "channel_insight_line": ch.get("line", ""),
         "channel_insight_cc": ch.get("callcenter", ""),
-        "channel_insight_carsensor": ch.get("carsensor", ""),
+        "channel_insight_web": ch.get("web", ""),
         "key_quotes_json": json.dumps(result.get("key_quotes", []), ensure_ascii=False),
         "summary": result.get("summary", ""),
         "processed_at": datetime.now(timezone.utc),
@@ -405,7 +405,7 @@ WHEN MATCHED THEN UPDATE SET
     channel_insight_visit = source.channel_insight_visit,
     channel_insight_line = source.channel_insight_line,
     channel_insight_cc = source.channel_insight_cc,
-    channel_insight_carsensor = source.channel_insight_carsensor,
+    channel_insight_web = source.channel_insight_web,
     key_quotes_json = source.key_quotes_json,
     summary = source.summary,
     processed_at = source.processed_at

@@ -228,15 +228,15 @@ write_silver(df_visit.unionByName(df_line).unionByName(df_call),
 # COMMAND ----------
 
 # MAGIC %md-sandbox
-# MAGIC ## 4. sv_carsensor_behavior
+# MAGIC ## 4. sv_web_browsing_behavior
 # MAGIC <div style="border-left: 4px solid #1976d2; background: #e3f2fd; padding: 14px 18px; border-radius: 6px; margin-bottom: 10px;">
-# MAGIC   <strong>📘 4. sv_carsensor_behavior</strong> — カーセンサー行動データを顧客単位で集約
+# MAGIC   <strong>📘 4. sv_web_browsing_behavior</strong> — Web 閲覧行動データを顧客単位で集約
 # MAGIC </div>
 
 # COMMAND ----------
 
 df_behavior = (
-    spark.table("bz_carsensor_events")
+    spark.table("bz_web_browsing_events")
     .groupBy("sf_opportunity_id")
     .agg(
         F.count("*").alias("total_events"),
@@ -257,8 +257,8 @@ df_behavior = (
     .drop("_vlist", "_klist")
 )
 
-write_silver(df_behavior, "sv_carsensor_behavior", "カーセンサーWeb行動サマリ（顧客単位集約）",
-    fks=[("fk_sv_carsensor_customer", "sv_customers", "sf_opportunity_id")],
+write_silver(df_behavior, "sv_web_browsing_behavior", "Web 閲覧行動サマリ（顧客単位集約）",
+    fks=[("fk_sv_web_browsing_customer", "sv_customers", "sf_opportunity_id")],
     col_comments={
         "sf_opportunity_id": "SFDC商談ID（FK→sv_customers）",
         "total_events": "イベント総数", "session_count": "セッション数",
@@ -424,7 +424,7 @@ write_silver(sr_df, "sv_sales_results", "営業実績トランザクション（
 
 # COMMAND ----------
 
-for t in ["sv_customers", "sv_vehicle_inventory", "sv_interactions", "sv_carsensor_behavior", "sv_stores", "sv_sales_results"]:
+for t in ["sv_customers", "sv_vehicle_inventory", "sv_interactions", "sv_web_browsing_behavior", "sv_stores", "sv_sales_results"]:
     print(f"  {t:<30s} {spark.table(t).count():>10,} 件")
 print("✓ Silver 加工完了")
 

@@ -85,17 +85,17 @@ write_bronze(
 # COMMAND ----------
 
 # MAGIC %md-sandbox
-# MAGIC ## 2. bz_carsensor_events
+# MAGIC ## 2. bz_web_browsing_events
 # MAGIC <div style="border-left: 4px solid #1976d2; background: #e3f2fd; padding: 14px 18px; border-radius: 6px; margin-bottom: 10px;">
-# MAGIC   <strong>📘 2. bz_carsensor_events</strong> — カーセンサーの顧客Web行動ログ（生データ）
+# MAGIC   <strong>📘 2. bz_web_browsing_events</strong> — Web 閲覧履歴の顧客Web行動ログ（生データ）
 # MAGIC </div>
 
 # COMMAND ----------
 
 write_bronze(
-    spark.read.parquet(f"/Volumes/{catalog_name}/{schema_name}/{RAW_VOLUME_NAME}/carsensor_events"),
-    "bz_carsensor_events",
-    "カーセンサーの顧客Web行動ログ（生データ）",
+    spark.read.parquet(f"/Volumes/{catalog_name}/{schema_name}/{RAW_VOLUME_NAME}/web_browsing_events"),
+    "bz_web_browsing_events",
+    "Web 閲覧履歴の顧客Web行動ログ（生データ）",
     {
         "event_id": "イベント一意ID",
         "sf_opportunity_id": "SFDC商談ID（顧客紐付けキー）",
@@ -198,6 +198,6 @@ write_bronze(
 
 # COMMAND ----------
 
-for t in ["bz_sf_opportunities", "bz_carsensor_events", "bz_visit_transcripts", "bz_line_messages", "bz_callcenter_logs"]:
+for t in ["bz_sf_opportunities", "bz_web_browsing_events", "bz_visit_transcripts", "bz_line_messages", "bz_callcenter_logs"]:
     print(f"  {t:<30s} {spark.table(t).count():>8,} 件")
 print("✓ Bronze 取り込み完了")

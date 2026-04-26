@@ -35,8 +35,8 @@
 # MAGIC   </div>
 # MAGIC   <div style="background: #f8f9fb; border-radius: 10px; padding: 18px 14px; text-align: center; border: 1px solid #e0e0e0;">
 # MAGIC     <div style="background: #1976d2; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; margin-bottom: 8px;">2</div>
-# MAGIC     <div style="font-weight: 600; font-size: 13px; color: #333;">カーセンサー</div>
-# MAGIC     <div style="font-size: 11px; color: #888; margin-top: 4px;">carsensor_events<br/>~15,000 件</div>
+# MAGIC     <div style="font-weight: 600; font-size: 13px; color: #333;">Web 閲覧履歴</div>
+# MAGIC     <div style="font-size: 11px; color: #888; margin-top: 4px;">web_browsing_events<br/>~15,000 件</div>
 # MAGIC   </div>
 # MAGIC   <div style="background: #f8f9fb; border-radius: 10px; padding: 18px 14px; text-align: center; border: 1px solid #e0e0e0;">
 # MAGIC     <div style="background: #1976d2; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; margin-bottom: 8px;">3</div>
@@ -335,9 +335,9 @@ print(f"✓ sf_opportunities: {sf_df.count():,} 件 → /Volumes/{catalog_name}/
 # COMMAND ----------
 
 # MAGIC %md-sandbox
-# MAGIC ## Step 2: カーセンサー Web 行動ログ生成（~15,000 件）
+# MAGIC ## Step 2: Web 閲覧行動ログ生成（~15,000 件）
 # MAGIC <div style="border-left: 4px solid #388E3C; background: #E8F5E9; padding: 14px 20px; border-radius: 0 8px 8px 0; margin-bottom: 16px;">
-# MAGIC   <div style="font-size: 15px; font-weight: 700; color: #2E7D32;">Step 2: カーセンサー Web 行動ログ生成（~15,000 件）</div>
+# MAGIC   <div style="font-size: 15px; font-weight: 700; color: #2E7D32;">Step 2: Web 閲覧行動ログ生成（~15,000 件）</div>
 # MAGIC </div>
 
 # COMMAND ----------
@@ -390,9 +390,9 @@ for rec in records:
             "event_timestamp": (base_ts + timedelta(hours=random.randint(0, 1440))).isoformat(),
         })
 
-cs_df = spark.createDataFrame(events)
-cs_df.write.mode("overwrite").parquet(f"/Volumes/{catalog_name}/{schema_name}/{RAW_VOLUME_NAME}/carsensor_events")
-print(f"✓ carsensor_events: {cs_df.count():,} 件 → /Volumes/{catalog_name}/{schema_name}/{RAW_VOLUME_NAME}/carsensor_events")
+web_df = spark.createDataFrame(events)
+web_df.write.mode("overwrite").parquet(f"/Volumes/{catalog_name}/{schema_name}/{RAW_VOLUME_NAME}/web_browsing_events")
+print(f"✓ web_browsing_events: {web_df.count():,} 件 → /Volumes/{catalog_name}/{schema_name}/{RAW_VOLUME_NAME}/web_browsing_events")
 
 # COMMAND ----------
 
@@ -894,7 +894,7 @@ print("=" * 60)
 
 datasets = [
     ("sf_opportunities",  "SFDC 商談データ"),
-    ("carsensor_events",  "カーセンサー行動ログ"),
+    ("web_browsing_events",  "Web 閲覧行動ログ"),
     ("visit_transcripts", "来店文字起こし"),
     ("line_messages",     "LINE メッセージ"),
     ("callcenter_logs",   "コールセンターログ"),
