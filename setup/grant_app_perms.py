@@ -80,6 +80,8 @@ grants_sql = [
     (f"GRANT USE SCHEMA ON SCHEMA `{catalog_name}`.`{schema_name}` TO `{sp_client_id}`", "USE SCHEMA"),
     (f"GRANT SELECT ON SCHEMA `{catalog_name}`.`{schema_name}` TO `{sp_client_id}`", "SELECT on schema"),
     (f"GRANT READ VOLUME ON SCHEMA `{catalog_name}`.`{schema_name}` TO `{sp_client_id}`", "READ VOLUME on schema"),
+    # Genie が current_sales_rep_email() を呼べるよう EXECUTE も付与（Ask AI 経由の場合は App SP コンテキストで実行される）
+    (f"GRANT EXECUTE ON SCHEMA `{catalog_name}`.`{schema_name}` TO `{sp_client_id}`", "EXECUTE on schema (for UC functions)"),
 ]
 
 for sql, desc in grants_sql:

@@ -46,6 +46,26 @@ print(f"  Warehouse ID   : {warehouse_id}")
 
 # COMMAND ----------
 
+# DBTITLE 1,UC 関数作成: current_sales_rep_email()
+# Genie が「自分のメールアドレス」を参照するための UDF。
+# TABLE 型を返す SQL UDF で、Genie が SELECT * FROM current_sales_rep_email() として呼び出せる。
+# Genie / App 経由の実行時は current_user() がログインユーザーのメールになる。
+spark.sql(f"USE CATALOG {catalog_name}")
+spark.sql(f"USE SCHEMA {schema_name}")
+spark.sql(f"""
+CREATE OR REPLACE FUNCTION {catalog_name}.{schema_name}.current_sales_rep_email()
+RETURNS TABLE(email STRING)
+COMMENT '中古車販売の営業担当の情報（メールアドレス）を取得する関数'
+RETURN SELECT current_user() AS email
+""")
+print(f"  ✓ Function created: {catalog_name}.{schema_name}.current_sales_rep_email()")
+
+# 動作確認
+df = spark.sql(f"SELECT * FROM {catalog_name}.{schema_name}.current_sales_rep_email()")
+print(f"  sample output (runner の場合): {df.collect()[0]['email']}")
+
+# COMMAND ----------
+
 # DBTITLE 1,YAML 定義ファイルの読込
 # MAGIC %pip install pyyaml -q
 # COMMAND ----------
@@ -114,12 +134,19 @@ print(f"  既存 Genie Space: {len(existing_by_name)} 件")
 import json as _json
 import uuid
 
-def _build_serialized_space(tables: list[str], sample_questions: list[str]) -> str:
+def _build_serialized_space(tables: list[str], sample_questions: list[str], functions: list[str]) -> str:
     """Genie Space の serialized_space JSON を構築する。
 
     POST /api/2.0/genie/spaces では serialized_space が必須で、
-    中に sample_questions と data_sources.tables を入れる。
+    中に sample_questions と data_sources.tables / data_sources.functions を入れる。
     """
+    data_sources = {
+        # API requires tables sorted by identifier
+        "tables": [{"identifier": t} for t in sorted(tables)],
+    }
+    if functions:
+        data_sources["functions"] = [{"identifier": f} for f in sorted(functions)]
+
     body = {
         "version": 2,
         "config": {
@@ -127,10 +154,7 @@ def _build_serialized_space(tables: list[str], sample_questions: list[str]) -> s
                 {"id": uuid.uuid4().hex, "question": [q]} for q in sample_questions
             ],
         },
-        "data_sources": {
-            # API requires tables sorted by identifier
-            "tables": [{"identifier": t} for t in sorted(tables)],
-        },
+        "data_sources": data_sources,
     }
     return _json.dumps(body, ensure_ascii=False)
 
@@ -143,18 +167,25 @@ for sp in config["spaces"]:
         t.replace("${catalog}", catalog_name).replace("${schema}", schema_name)
         for t in sp["tables"]
     ]
-    serialized = _build_serialized_space(tables, sp["sample_questions"])
+    functions = [
+        f.replace("${catalog}", catalog_name).replace("${schema}", schema_name)
+        for f in sp.get("functions", [])
+    ]
+    serialized = _build_serialized_space(tables, sp["sample_questions"], functions)
 
     if display_name in existing_by_name:
         # UPDATE: サブ構造をバラで送る形式でOK
         space_id = existing_by_name[display_name].get("space_id") or existing_by_name[display_name].get("id")
-        _api("PATCH", f"/api/2.0/genie/spaces/{space_id}", body={
+        patch_body = {
             "title": display_name,
             "description": sp["description"].strip(),
             "warehouse_id": warehouse_id,
             "tables": [{"full_name": t} for t in tables],
             "sample_questions": [{"question": q} for q in sp["sample_questions"]],
-        })
+        }
+        if functions:
+            patch_body["functions"] = [{"full_name": f} for f in functions]
+        _api("PATCH", f"/api/2.0/genie/spaces/{space_id}", body=patch_body)
         action = "updated"
     else:
         # CREATE: serialized_space が必須
@@ -168,7 +199,8 @@ for sp in config["spaces"]:
         action = "created"
 
     results[key] = {"space_id": space_id, "display_name": display_name, "action": action}
-    print(f"  ✓ [{action}] {display_name}  →  {space_id}")
+    fn_str = f", {len(functions)} func" if functions else ""
+    print(f"  ✓ [{action}] {display_name}  →  {space_id}  ({len(tables)} tables{fn_str})")
 
 # COMMAND ----------
 

@@ -20,8 +20,11 @@ spaces:
       - ${catalog}.${schema}.sv_interactions
       - ${catalog}.${schema}.gd_customer_insights
       - ${catalog}.${schema}.gd_recommendations
+    functions:
+      - ${catalog}.${schema}.current_sales_rep_email
     instructions: |
       あなたは中古車販売の営業アシスタントです。
+      営業担当者の「自分」は current_sales_rep_email() を呼んで取得したメールアドレスで sv_customers.sales_rep_email と照合してください。
       営業担当者からの質問に対し、顧客データ・在庫データ・商談履歴を参照して回答します。
 
       主な対応範囲:
@@ -51,9 +54,12 @@ spaces:
       営業担当者の個人実績を自然言語で分析する Genie。成約率・売上・車種別・月別トレンド等。
     tables:
       - ${catalog}.${schema}.sv_sales_results
+    functions:
+      - ${catalog}.${schema}.current_sales_rep_email
     instructions: |
       あなたは中古車販売の営業成績アナリストです。
       営業担当者の売上実績・目標達成率・商談状況を分析し、回答します。
+      「自分の成績」などログインユーザーを指す問いは current_sales_rep_email() のメールアドレスを sv_sales_results.sales_rep_email と照合してください。
 
       主な対応範囲:
       - 個人の売上実績と目標達成率の確認
@@ -82,6 +88,8 @@ spaces:
       店舗別の売上・ファネル転換率データを分析する Genie。経営層・店舗マネージャー向け。
     tables:
       - ${catalog}.${schema}.gd_store_daily_activity
+    functions:
+      - ${catalog}.${schema}.current_sales_rep_email
     instructions: |
       あなたは中古車販売の営業データアナリストです。
       店舗別の売上・ファネル転換率データを分析し、経営層や店舗マネージャーの質問に回答します。
