@@ -11,9 +11,10 @@ Genie / Agent Bricks（Knowledge Assistant / Multi-Agent Supervisor）/ Databric
 
 | UI | 機能 | 裏側 |
 |---|---|---|
-| **現場営業画面** `/sales` | 顧客一覧、顧客インサイト、車両レコメンド、トークスクリプト、Ask AI チャット | UC テーブル、Foundation Model API、Multi-Agent Supervisor |
-| **マイページ** `/sales/mypage` | 営業担当者の成績分析・Genie 質問 | マイページ用 Genie Space |
+| **現場営業画面** `/sales` | 顧客テーブル、顧客インサイト、車両レコメンド、トークスクリプト、Ask AI チャット | UC テーブル、Foundation Model API、Multi-Agent Supervisor |
+| **マイページ** `/sales/mypage` | 営業成績の可視化、Genie Space 風チャット（結果 / 可視化 / SQL のタブ切替、結果テーブルの列ソート、「メールで送る」デモボタン） | マイページ用 Genie Space |
 | **管理者画面** `/admin` | ダッシュボード、AI 推論ログ、データカタログ | UC、MLflow Tracing |
+| **AI/BI ダッシュボード** | 車両販売分析ダッシュボード（営業データ Genie と連携） | Lakeview + UC + 営業データ Genie Space |
 
 ---
 
@@ -37,11 +38,14 @@ Genie / Agent Bricks（Knowledge Assistant / Multi-Agent Supervisor）/ Databric
 │  └─ Multi-Agent Supervisor「car-agent-supervisor」                    │
 │        └─ 上の Genie ×3 + KA を束ねて振り分け                          │
 ├──────────────────────────────────────────────────────────────────────┤
+│  AI/BI Dashboard「[car-agent] 車両販売ダッシュボード」                │
+│    └─ UC テーブル + 営業データ Genie Space 連携（埋め込み公開済み）    │
+├──────────────────────────────────────────────────────────────────────┤
 │  Databricks App「car-agent」 (React + FastAPI)                        │
 │    └─ URL: https://car-agent-<workspace-id>.aws.databricksapps.com    │
 ├──────────────────────────────────────────────────────────────────────┤
 │  Databricks Job「[car-agent] 初回セットアップ」                        │
-│    └─ 上のリソース全部を一発で作る自動化 Job (10 タスク)                │
+│    └─ 上のリソース全部を一発で作る自動化 Job (11 タスク)                │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -99,6 +103,7 @@ variables:
   genie_vehicle_name:   { default: "[car-agent] 車両営業アシスタント" }
   genie_mypage_name:    { default: "[car-agent] 営業マイページ" }
   genie_dashboard_name: { default: "[car-agent] 営業データ" }
+  dashboard_name:       { default: "[car-agent] 車両販売ダッシュボード" }
 
   # ---- デモ担当者 ----
   sales_rep_name:       { default: "大前 このみ" }             # ← デモ主役の営業担当名
@@ -136,14 +141,19 @@ databricks bundle run car_agent --profile <自分のプロファイル>
 databricks bundle run setup_demo --profile <プロファイル> --params customer_limit=3
 ```
 
-### Step 5. App を開く
+### Step 5. App とダッシュボードを開く
 
-Step 4-3 の最後の行に表示される App URL をブラウザで開きます。
+Step 4-2 の `print_summary` タスクの出力（Job ログ or Job UI の最終タスク）に、作成済みリソースの URL 一覧が出ます。
 
 ```
-✓ App started successfully
-You can access the app at https://car-agent-xxxxxx.aws.databricksapps.com
+── Databricks App ──
+  App URL               : https://car-agent-xxxxxx.aws.databricksapps.com
+
+── AI/BI Dashboard ──
+  URL                   : https://<workspace>/dashboardsv3/<dashboard_id>/published
 ```
+
+Step 4-3 完了後、App URL をブラウザで開けばデモを開始できます。ダッシュボードは別タブで開いて管理者向けの可視化として使います。
 
 ---
 
@@ -156,7 +166,7 @@ You can access the app at https://car-agent-xxxxxx.aws.databricksapps.com
   - **Job**：`[car-agent] 初回セットアップ`
   - **App**：`car-agent`（Service Principal も同時に自動生成）
 
-### `databricks bundle run setup_demo` の動作（10 タスクが順次実行）
+### `databricks bundle run setup_demo` の動作（11 タスクが順次実行）
 
 | # | タスク | 所要 | 何をするか |
 |---|---|---|---|
@@ -169,7 +179,8 @@ You can access the app at https://car-agent-xxxxxx.aws.databricksapps.com
 | 7 | `create_mas` | 1-3 分 | Multi-Agent Supervisor を作成（Genie ×3 + KA を束ねる） |
 | 8 | `grant_app_perms` | 30 秒 | App SP に UC / Genie / KA / MAS の必要権限を付与 |
 | 9 | `register_config` | 20 秒 | Genie/KA/MAS の ID を `_app_config` テーブルに記録（App が起動時に参照） |
-| 10 | `print_summary` | 10 秒 | 作成物の URL/ID 一覧を出力 |
+| 10 | `create_dashboard` | 30 秒 | `車両販売ダッシュボード.lvdash.json` を catalog/schema/Genie ID 置換して Lakeview API でデプロイ、埋め込み認証で公開 |
+| 11 | `print_summary` | 10 秒 | 作成物の URL/ID 一覧（App / Dashboard / Genie / KA / MAS）を出力 |
 
 タスク間の依存関係は DAG で管理されており、gold 完了後は Genie と KA が並列実行されます。
 
@@ -223,6 +234,7 @@ car_ai_agent/
     ├── create_mas.py
     ├── grant_app_perms.py
     ├── register_config.py
+    ├── create_dashboard.py     AI/BI ダッシュボードを Lakeview API でデプロイ
     └── print_summary.py
 ```
 
@@ -234,11 +246,17 @@ App URL をブラウザで開いて：
 
 | 画面 | 確認ポイント |
 |---|---|
-| 顧客一覧 | 顧客カードが表示される |
+| 顧客一覧 | 顧客テーブル（顧客名・年齢・職業・家族構成・現在の車・予算・アクション）が表示される |
 | 顧客詳細 → 顧客インサイト | AI 生成の洞察が表示される |
 | 顧客詳細 → 車両レコメンド | 3 台の推薦車両と画像が表示 |
 | Ask AI チャット | 「田中様に合う SUV を教えて」などに日本語で回答 |
-| マイページ | 営業成績が表示、Genie に質問できる |
+| マイページ | 営業成績が表示。Genie チャットに質問すると、結果 / 可視化 / SQL の 3 タブで回答され、結果テーブルは列ヘッダでソート可能、「メールで送る」ボタンでトースト通知が出る |
+
+ダッシュボード URL（`print_summary` の出力に表示）をブラウザで開いて：
+
+| 画面 | 確認ポイント |
+|---|---|
+| 車両販売ダッシュボード | KPI カード・在庫分析・売上推移などが表示され、「営業データ」 Genie Space への質問もできる |
 
 セットアップで作ったものを後から確認するには：
 
@@ -280,7 +298,7 @@ databricks api post /api/2.0/sql/statements --json \
 途中のタスクで失敗した場合は、ジョブの失敗タスク以降だけ再実行できます：
 
 ```bash
-databricks bundle run setup_demo --only create_genies,create_mas,grant_app_perms,register_config,print_summary
+databricks bundle run setup_demo --only create_genies,create_mas,grant_app_perms,register_config,create_dashboard,print_summary
 ```
 
 ---
@@ -289,7 +307,7 @@ databricks bundle run setup_demo --only create_genies,create_mas,grant_app_perms
 
 - **フロントエンド**: React 19, TypeScript, TailwindCSS, Zustand, React Router
 - **バックエンド**: FastAPI, Python 3.11+, Databricks SDK, Databricks SQL Connector, OpenAI SDK (FM API 経由), MLflow Tracing
-- **インフラ**: Databricks Apps, Unity Catalog, Foundation Model API (Claude Sonnet 4), Genie, Agent Bricks
+- **インフラ**: Databricks Apps, Unity Catalog, Foundation Model API (Claude Sonnet 4), Genie, Agent Bricks, AI/BI Dashboard (Lakeview)
 - **デプロイ**: Databricks Asset Bundles (DAB)
 
 ---
