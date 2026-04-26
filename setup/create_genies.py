@@ -134,19 +134,16 @@ print(f"  既存 Genie Space: {len(existing_by_name)} 件")
 import json as _json
 import uuid
 
-def _build_serialized_space(tables: list[str], sample_questions: list[str], functions: list[str]) -> str:
+def _build_serialized_space(tables: list[str], sample_questions: list[str]) -> str:
     """Genie Space の serialized_space JSON を構築する。
 
     POST /api/2.0/genie/spaces では serialized_space が必須で、
-    中に sample_questions と data_sources.tables / data_sources.functions を入れる。
-    """
-    data_sources = {
-        # API requires tables sorted by identifier
-        "tables": [{"identifier": t} for t in sorted(tables)],
-    }
-    if functions:
-        data_sources["functions"] = [{"identifier": f} for f in sorted(functions)]
+    中に sample_questions と data_sources.tables を入れる。
 
+    NOTE: 現在の Genie API では data_sources に functions フィールドを指定できません
+    (Cannot find field: functions エラーになる)。UC 関数は UC に作成済みで、Genie は
+    スキーマ経由で可視のため instruction 内で関数名を指定するだけで呼び出し可能。
+    """
     body = {
         "version": 2,
         "config": {
@@ -154,7 +151,10 @@ def _build_serialized_space(tables: list[str], sample_questions: list[str], func
                 {"id": uuid.uuid4().hex, "question": [q]} for q in sample_questions
             ],
         },
-        "data_sources": data_sources,
+        "data_sources": {
+            # API requires tables sorted by identifier
+            "tables": [{"identifier": t} for t in sorted(tables)],
+        },
     }
     return _json.dumps(body, ensure_ascii=False)
 
@@ -167,25 +167,24 @@ for sp in config["spaces"]:
         t.replace("${catalog}", catalog_name).replace("${schema}", schema_name)
         for t in sp["tables"]
     ]
+    # functions は instruction 経由で Genie に伝える（API で tools 登録できないため）
+    # YAML の functions: ... は現在ドキュメント用
     functions = [
         f.replace("${catalog}", catalog_name).replace("${schema}", schema_name)
         for f in sp.get("functions", [])
     ]
-    serialized = _build_serialized_space(tables, sp["sample_questions"], functions)
+    serialized = _build_serialized_space(tables, sp["sample_questions"])
 
     if display_name in existing_by_name:
         # UPDATE: サブ構造をバラで送る形式でOK
         space_id = existing_by_name[display_name].get("space_id") or existing_by_name[display_name].get("id")
-        patch_body = {
+        _api("PATCH", f"/api/2.0/genie/spaces/{space_id}", body={
             "title": display_name,
             "description": sp["description"].strip(),
             "warehouse_id": warehouse_id,
             "tables": [{"full_name": t} for t in tables],
             "sample_questions": [{"question": q} for q in sp["sample_questions"]],
-        }
-        if functions:
-            patch_body["functions"] = [{"full_name": f} for f in functions]
-        _api("PATCH", f"/api/2.0/genie/spaces/{space_id}", body=patch_body)
+        })
         action = "updated"
     else:
         # CREATE: serialized_space が必須
@@ -199,7 +198,7 @@ for sp in config["spaces"]:
         action = "created"
 
     results[key] = {"space_id": space_id, "display_name": display_name, "action": action}
-    fn_str = f", {len(functions)} func" if functions else ""
+    fn_str = f", {len(functions)} func (via instruction)" if functions else ""
     print(f"  ✓ [{action}] {display_name}  →  {space_id}  ({len(tables)} tables{fn_str})")
 
 # COMMAND ----------
