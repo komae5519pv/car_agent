@@ -32,6 +32,10 @@ SCHEMA="car_agent"
 WAREHOUSE_ID="348478745ad64b30"
 KA_NAME="car-agent-knowledge"
 MAS_NAME="car-agent-supervisor"
+GENIE_VEHICLE_NAME="[car-agent] 車両営業アシスタント"
+GENIE_MYPAGE_NAME="[car-agent] 営業マイページ"
+GENIE_DASHBOARD_NAME="[car-agent] 営業データ"
+DASHBOARD_NAME="[car-agent] 車両販売ダッシュボード"
 YES="false"
 DROP_SCHEMA="false"
 
@@ -40,31 +44,39 @@ usage() {
 Usage: $0 --profile <profile> [options]
 
 Options:
-  --profile <name>       Databricks CLI profile (必須)
-  --target <name>        DAB target (default: dev)
-  --catalog <name>       UC catalog 名 (default: $CATALOG)
-  --schema <name>        UC schema 名 (default: $SCHEMA)
-  --ka-name <name>       Knowledge Assistant 名 (default: $KA_NAME)
-  --mas-name <name>      Multi-Agent Supervisor 名 (default: $MAS_NAME)
-  --warehouse-id <id>    _app_config 読み取り用 warehouse ID (default: $WAREHOUSE_ID)
-  --drop-schema          UC schema も DROP CASCADE で削除
-  --yes, -y              確認プロンプトをスキップ
-  -h, --help             このヘルプ表示
+  --profile <name>         Databricks CLI profile (必須)
+  --target <name>          DAB target (default: dev)
+  --catalog <name>         UC catalog 名 (default: $CATALOG)
+  --schema <name>          UC schema 名 (default: $SCHEMA)
+  --ka-name <name>         Knowledge Assistant 名 (default: $KA_NAME)
+  --mas-name <name>        Multi-Agent Supervisor 名 (default: $MAS_NAME)
+  --genie-vehicle-name <n> Genie 車両営業 Space 名 (default: "$GENIE_VEHICLE_NAME")
+  --genie-mypage-name <n>  Genie マイページ Space 名 (default: "$GENIE_MYPAGE_NAME")
+  --genie-dashboard-name <n> Genie 営業データ Space 名 (default: "$GENIE_DASHBOARD_NAME")
+  --dashboard-name <name>  AI/BI ダッシュボード名 (default: "$DASHBOARD_NAME")
+  --warehouse-id <id>      _app_config 読み取り用 warehouse ID (default: $WAREHOUSE_ID)
+  --drop-schema            UC schema も DROP CASCADE で削除
+  --yes, -y                確認プロンプトをスキップ
+  -h, --help               このヘルプ表示
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --profile)       PROFILE="$2"; shift 2;;
-    --target|-t)     TARGET="$2"; shift 2;;
-    --catalog)       CATALOG="$2"; shift 2;;
-    --schema)        SCHEMA="$2"; shift 2;;
-    --ka-name)       KA_NAME="$2"; shift 2;;
-    --mas-name)      MAS_NAME="$2"; shift 2;;
-    --warehouse-id)  WAREHOUSE_ID="$2"; shift 2;;
-    --drop-schema)   DROP_SCHEMA="true"; shift;;
-    --yes|-y)        YES="true"; shift;;
-    -h|--help)       usage; exit 0;;
+    --profile)                PROFILE="$2"; shift 2;;
+    --target|-t)              TARGET="$2"; shift 2;;
+    --catalog)                CATALOG="$2"; shift 2;;
+    --schema)                 SCHEMA="$2"; shift 2;;
+    --ka-name)                KA_NAME="$2"; shift 2;;
+    --mas-name)               MAS_NAME="$2"; shift 2;;
+    --genie-vehicle-name)     GENIE_VEHICLE_NAME="$2"; shift 2;;
+    --genie-mypage-name)      GENIE_MYPAGE_NAME="$2"; shift 2;;
+    --genie-dashboard-name)   GENIE_DASHBOARD_NAME="$2"; shift 2;;
+    --dashboard-name)         DASHBOARD_NAME="$2"; shift 2;;
+    --warehouse-id)           WAREHOUSE_ID="$2"; shift 2;;
+    --drop-schema)            DROP_SCHEMA="true"; shift;;
+    --yes|-y)                 YES="true"; shift;;
+    -h|--help)                usage; exit 0;;
     *) echo "Unknown arg: $1"; usage; exit 1;;
   esac
 done
@@ -168,6 +180,53 @@ print(f'CFG_MAS_TILE_ID={mas}')
 eval "$TILE_ENV"
 echo "    ka_tile_id  : ${CFG_KA_TILE_ID:-<none>}"
 echo "    mas_tile_id : ${CFG_MAS_TILE_ID:-<none>}"
+
+# Genie Space: _app_config で取得できなかった分を name 検索でフォールバック
+echo ""
+echo "  Genie Space 検索 (name ベース・未取得 ID のフォールバック):"
+GENIE_JSON=$(databricks api get /api/2.0/genie/spaces --profile "$PROFILE" 2>/dev/null || echo '{}')
+GENIE_ENV=$(echo "$GENIE_JSON" | GENIE_VEHICLE_NAME="$GENIE_VEHICLE_NAME" GENIE_MYPAGE_NAME="$GENIE_MYPAGE_NAME" GENIE_DASHBOARD_NAME="$GENIE_DASHBOARD_NAME" python3 -c "
+import json, sys, os
+d = json.loads(sys.stdin.read() or '{}')
+spaces = d.get('spaces', [])
+wants = {
+    'CFG_GENIE_VEHICLE_ID_FB':   os.environ['GENIE_VEHICLE_NAME'],
+    'CFG_GENIE_MYPAGE_ID_FB':    os.environ['GENIE_MYPAGE_NAME'],
+    'CFG_GENIE_DASHBOARD_ID_FB': os.environ['GENIE_DASHBOARD_NAME'],
+}
+for k, want_name in wants.items():
+    found = ''
+    for s in spaces:
+        if s.get('title', '') == want_name:
+            found = s.get('space_id', '')
+            break
+    print(f'{k}={found}')
+")
+eval "$GENIE_ENV"
+# _app_config 側の ID がなければ name 検索結果を使う
+CFG_GENIE_VEHICLE_ID="${CFG_GENIE_VEHICLE_ID:-${CFG_GENIE_VEHICLE_ID_FB:-}}"
+CFG_GENIE_MYPAGE_ID="${CFG_GENIE_MYPAGE_ID:-${CFG_GENIE_MYPAGE_ID_FB:-}}"
+CFG_GENIE_DASHBOARD_ID="${CFG_GENIE_DASHBOARD_ID:-${CFG_GENIE_DASHBOARD_ID_FB:-}}"
+echo "    genie_vehicle_id    : ${CFG_GENIE_VEHICLE_ID:-<none>}"
+echo "    genie_mypage_id     : ${CFG_GENIE_MYPAGE_ID:-<none>}"
+echo "    genie_dashboard_id  : ${CFG_GENIE_DASHBOARD_ID:-<none>}"
+
+# Dashboard: _app_config で取得できなかったら name 検索でフォールバック
+if [[ -z "${CFG_DASHBOARD_ID:-}" ]]; then
+  echo ""
+  echo "  AI/BI Dashboard 検索 (name ベース):"
+  DASH_JSON=$(databricks api get /api/2.0/lakeview/dashboards --profile "$PROFILE" 2>/dev/null || echo '{}')
+  CFG_DASHBOARD_ID=$(echo "$DASH_JSON" | DASHBOARD_NAME="$DASHBOARD_NAME" python3 -c "
+import json, sys, os
+d = json.loads(sys.stdin.read() or '{}')
+want = os.environ['DASHBOARD_NAME']
+for x in d.get('dashboards', []):
+    if x.get('display_name', '') == want:
+        print(x.get('dashboard_id', ''))
+        break
+")
+  echo "    dashboard_id        : ${CFG_DASHBOARD_ID:-<none>}"
+fi
 
 # =====================================================================
 # 2. 確認
