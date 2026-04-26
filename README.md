@@ -7,6 +7,36 @@ Genie / Agent Bricks（Knowledge Assistant / Multi-Agent Supervisor）/ Databric
 
 ---
 
+## ⚡ よく使うコマンド（cheat sheet）
+
+プロファイル名は `databricks auth login` 時に作成されたもの（例: `my-workspace`）。
+
+```bash
+# === 初回デプロイ（全部作る）===
+databricks bundle deploy                           --profile <プロファイル>   # Job + App のガワ作成（~30秒）
+databricks bundle run setup_demo                   --profile <プロファイル>   # 全リソース作成（10〜15分）
+databricks bundle run car_agent                    --profile <プロファイル>   # App 起動（~2分）
+
+# === 差分だけ更新（コード変えたとき）===
+databricks bundle deploy                           --profile <プロファイル>   # ファイル同期
+databricks bundle run car_agent                    --profile <プロファイル>   # App 再起動のみ
+# パイプラインだけ再実行したければ:
+databricks bundle run setup_demo --only build_gold --profile <プロファイル>   # 特定タスクだけ
+
+# === 全部消す（UC スキーマも含めて真っサラに）===
+./scripts/teardown.sh --profile <プロファイル> --drop-schema --yes
+
+# === 消して作り直す（ワンセット）===
+./scripts/teardown.sh --profile <プロファイル> --drop-schema --yes \
+  && databricks bundle deploy       --profile <プロファイル> \
+  && databricks bundle run setup_demo --profile <プロファイル> \
+  && databricks bundle run car_agent  --profile <プロファイル>
+```
+
+詳しい説明は下のセクション：[セットアップ手順](#-セットアップ手順4-コマンド) / [全削除](#-全削除--再現性テスト)
+
+---
+
 ## 📺 このデモで見られるもの
 
 | UI | 機能 | 裏側 |
@@ -248,123 +278,78 @@ car_ai_agent/
 │   └── print_summary.py
 │
 └── scripts/                    🧹 運用スクリプト（ローカルから叩く）
-    └── teardown.sh             デモの全削除（再現性テスト用）
+    └── teardown.sh             デモの全削除
 ```
 
----
-
-## ✅ 動作確認
-
-App URL をブラウザで開いて：
-
-| 画面 | 確認ポイント |
-|---|---|
-| 顧客一覧 | 顧客テーブル（顧客名・年齢・職業・家族構成・現在の車・予算・アクション）が表示される |
-| 顧客詳細 → 顧客インサイト | AI 生成の洞察が表示される |
-| 顧客詳細 → 車両レコメンド | 3 台の推薦車両と画像が表示 |
-| Ask AI チャット | 「田中様に合う SUV を教えて」などに日本語で回答 |
-| マイページ | 営業成績が表示。Genie チャットに質問すると、結果 / 可視化 / SQL の 3 タブで回答され、結果テーブルは列ヘッダでソート可能、「メールで送る」ボタンでトースト通知が出る |
-
-ダッシュボード URL（`print_summary` の出力に表示）をブラウザで開いて：
-
-| 画面 | 確認ポイント |
-|---|---|
-| 車両販売ダッシュボード | KPI カード・在庫分析・売上推移などが表示され、「営業データ」 Genie Space への質問もできる |
-
-セットアップで作ったものを後から確認するには：
+作成済みリソースの ID/URL を確認するには：
 
 ```sql
--- Databricks SQL エディタで
-SELECT key, value, description FROM <catalog>.<schema>._app_config ORDER BY key;
+SELECT key, value FROM <catalog>.<schema>._app_config ORDER BY key;
 ```
 
 ---
 
-## 🧹 全削除 & 再現性テスト
+## 🧹 全削除 & ワンショット再デプロイ
 
-### teardown スクリプト（推奨）
+### teardown スクリプト（推奨・ワンコマンド）
 
-付属の `scripts/teardown.sh` が DAB 管理外のリソース（Dashboard / MAS / KA / Genie ×3）まで含めて一括削除します。
+付属の `scripts/teardown.sh` が **DAB 管理リソース（Job / App / workspace files）＋ DAB 管理外のリソース（Dashboard / MAS / KA / Genie ×3）＋ UC スキーマ** まですべてを一括削除します。
 
 ```bash
-# UC データは残して、それ以外を全削除
-./scripts/teardown.sh --profile <プロファイル>
-
-# UC Schema (Bronze/Silver/Gold テーブル・Volume・raw data) も削除
-./scripts/teardown.sh --profile <プロファイル> --drop-schema
-
-# 確認プロンプトもスキップ
+# 【最もよく使う】全削除 (UC スキーマも消す、確認スキップ)
 ./scripts/teardown.sh --profile <プロファイル> --drop-schema --yes
+
+# UC スキーマは残して、Job/App/Genie/KA/MAS/Dashboard だけ削除
+./scripts/teardown.sh --profile <プロファイル> --yes
 ```
 
-内部的に実行される順番:
+<details><summary>オプション詳細</summary>
+
+| フラグ | 効果 |
+|---|---|
+| `--profile <名前>` | 必須。`databricks auth login` で作成したプロファイル名 |
+| `--drop-schema` | UC スキーマ（Bronze/Silver/Gold テーブル + Volume + 生データ）も削除。未指定だとスキーマは残る |
+| `--yes` / `-y` | 確認プロンプトをスキップ（CI 用） |
+| `--catalog <名前>` | カタログ名を上書き（既定: `konomi_demo_catalog`） |
+| `--schema <名前>` | スキーマ名を上書き（既定: `car_agent`） |
+| `--ka-name` / `--mas-name` | KA / MAS 名を上書き（既定: `car-agent-knowledge` / `car-agent-supervisor`） |
+
+</details>
+
+<details><summary>内部的な削除順序</summary>
 
 1. `_app_config` テーブルから各リソースの ID を取得
 2. AI/BI Dashboard 削除（Lakeview API）
-3. Multi-Agent Supervisor endpoint 削除
-4. Knowledge Assistant endpoint 削除
-5. Genie Spaces ×3 削除
+3. Multi-Agent Supervisor tile 削除（Agent Bricks）
+4. Knowledge Assistant tile 削除（Agent Bricks）
+5. Genie Spaces ×3 削除（UC の `_app_config` に登録された ID 経由）
 6. `databricks bundle destroy`（Job / App / workspace files）
 7. `DROP SCHEMA ... CASCADE`（`--drop-schema` 指定時のみ）
 
-### 真のクリーンスレート検証（他 SA 視点の再現テスト）
+</details>
 
-他 SA が `git clone` から始めたときと同じ状態をシミュレートするには:
+### ワンショット「消して作り直し」
 
-```bash
-# 1. 現在の環境を完全削除
-./scripts/teardown.sh --profile <プロファイル> --drop-schema --yes
-
-# 2. ローカルを clean clone し直す
-cd ..
-rm -rf car_agent
-git clone https://github.com/komae5519pv/car_agent.git
-cd car_agent
-
-# 3. 自分用の設定に書き換え (databricks.yml の catalog / schema / warehouse_id)
-#    → 他 SA が実際に行う作業と同じ
-
-# 4. ゼロから再デプロイ
-databricks bundle deploy      --profile <プロファイル>
-databricks bundle run setup_demo --profile <プロファイル>
-databricks bundle run car_agent  --profile <プロファイル>
-```
-
-⚠️ 並行環境（同一ワークスペースで dev と test を同時に立てる）は DAB の Terraform state 共有の都合で**動きません**。destroy → redeploy の一方通行で検証してください。
-
-### 手動削除（スクリプトを使わない場合）
+デモ準備で一番よく使うシーケンス。**コピペ1回で真っさら→再デプロイまで完了**します。
 
 ```bash
-# DAB 管理リソース（Job + App + workspace ファイル）
-databricks bundle destroy --profile <プロファイル> --auto-approve
-
-# DAB 管理外（Genie / KA / MAS / Dashboard）は Databricks UI から削除
-# または同じ名前で setup_demo を再実行すれば冪等に上書きされる
-
-# UC スキーマ削除
-databricks api post /api/2.0/sql/statements --json \
-  '{"warehouse_id":"<id>","statement":"DROP SCHEMA IF EXISTS <catalog>.<schema> CASCADE"}' \
-  --profile <プロファイル>
+./scripts/teardown.sh --profile <プロファイル> --drop-schema --yes \
+  && databricks bundle deploy       --profile <プロファイル> \
+  && databricks bundle run setup_demo --profile <プロファイル> \
+  && databricks bundle run car_agent  --profile <プロファイル>
 ```
+
+所要時間: 合計 15〜20 分程度（teardown 数十秒 + setup 10〜15 分 + app デプロイ 2-3 分）。
+
+> ⚠️ 同一ワークスペースで dev と test を並行デプロイすることは、DAB の Terraform state 共有の都合でできません。destroy → redeploy の一方通行で運用してください。
+>
+> 途中のタスクで失敗した場合は、`--only <task_key,...>` で失敗タスク以降だけ再実行できます（例: `databricks bundle run setup_demo --only create_mas,grant_app_perms,register_config,create_dashboard,print_summary --profile <プロファイル>`）。
 
 ---
 
-## 🆘 トラブルシューティング
+## 🎬 デモシナリオ
 
-| 症状 | 原因 | 対処 |
-|---|---|---|
-| `legacy databricks CLI detected` | 古い CLI が PATH 優先 | `export PATH="/opt/homebrew/bin:$PATH"` で新 CLI を優先 |
-| カタログ権限エラー | catalog の MANAGE がない | 管理者依頼 or owner のカタログに変更 |
-| Agent Bricks 作成失敗 | 機能が無効 | 管理者依頼 |
-| App で「顧客が見つかりませんでした」 | `grant_app_perms` 未実行 or App 未再起動 | `bundle run setup_demo --only grant_app_perms` → `bundle run car_agent` |
-| Genie 作成失敗: `serialized_space is required` | 既存 Genie がない clean state | 最新コードに pull してから再実行 |
-| Ask AI でエラー | App SP が MAS endpoint にアクセスできない | `bundle run setup_demo --only grant_app_perms` → App 再起動 |
-
-途中のタスクで失敗した場合は、ジョブの失敗タスク以降だけ再実行できます：
-
-```bash
-databricks bundle run setup_demo --only create_genies,create_mas,grant_app_perms,register_config,create_dashboard,print_summary
-```
+デモ当日の画面遷移・入力プロンプト集は [`docs/DEMO_SCENARIO_COMPETITION.md`](docs/DEMO_SCENARIO_COMPETITION.md) を参照。
 
 ---
 
