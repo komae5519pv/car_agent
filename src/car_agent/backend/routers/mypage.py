@@ -432,7 +432,7 @@ async def get_genie_sample_questions() -> dict:
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
-            if not resp.ok:
+            if not resp.is_success:
                 return {"questions": []}
             data = resp.json()
             serialized = data.get("serialized_space")

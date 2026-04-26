@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useCurrentUser } from '../../context/CurrentUserContext'
-import { FiTrendingUp, FiTrendingDown, FiMinus, FiSend, FiUser, FiPlus, FiClock, FiBarChart2, FiList, FiLoader } from 'react-icons/fi'
+import { FiTrendingUp, FiTrendingDown, FiMinus, FiSend, FiUser, FiPlus, FiClock, FiBarChart2, FiList, FiLoader, FiMail } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import { LuChartBar } from 'react-icons/lu'
 import { MarkdownContent } from '../../components/common/MarkdownRenderer'
@@ -336,11 +336,15 @@ function detectChartType(columns: string[], rows: string[][]): ChartType {
 
 // rows → Recharts用データ変換
 function toChartData(columns: string[], rows: string[][], numCols: number[]) {
-  const labelCol = columns.findIndex((_, i) => !numCols.includes(i))
+  // 非数値列を「/」で結合してラベルに。例: "SUV / レクサス RX"
+  const nonNumIndices = columns.map((_, i) => i).filter((i) => !numCols.includes(i))
   return rows.map((row) => {
     const obj: Record<string, string | number> = {}
-    const label = labelCol >= 0 ? row[labelCol] : row.filter((_, ci) => !numCols.includes(ci)).join(' ')
-    obj._label = label.length > 14 ? label.slice(0, 13) + '…' : label
+    const label = nonNumIndices
+      .map((i) => (row[i] ?? '').toString().trim())
+      .filter(Boolean)
+      .join(' / ')
+    obj._label = label.length > 20 ? label.slice(0, 19) + '…' : label
     numCols.forEach((ci) => { obj[columns[ci]] = Number(row[ci]) || 0 })
     return obj
   })
@@ -514,11 +518,33 @@ function LineChartView({ columns, rows, numCols }: { columns: string[]; rows: st
 // Databricks Genie Space UI 相当: 結果 (Table) / 可視化 (Chart) / SQL の 3 タブ統一ウィジェット
 function GenieResultCard({ result }: { result: GenieResult }) {
   type Tab = 'table' | 'chart' | 'sql'
+  type SortState = { col: number; dir: 'asc' | 'desc' } | null
   const { table, sql } = result
   const numCols = table ? numericColIndices(table.columns, table.rows) : []
   const chartType = table ? detectChartType(table.columns, table.rows) : 'none'
   const canChart = chartType !== 'none'
   const [tab, setTab] = useState<Tab>('table')
+  const [sort, setSort] = useState<SortState>(null)
+
+  // ソート済み rows (null ならオリジナル順)
+  const sortedRows = table && sort ? (() => {
+    const isNum = numCols.includes(sort.col)
+    const sign = sort.dir === 'asc' ? 1 : -1
+    return [...table.rows].sort((a, b) => {
+      const av = a[sort.col] ?? ''
+      const bv = b[sort.col] ?? ''
+      if (isNum) return (Number(av) - Number(bv)) * sign
+      return av.localeCompare(bv, 'ja') * sign
+    })
+  })() : table?.rows ?? []
+
+  const toggleSort = (col: number) => {
+    setSort((prev) => {
+      if (!prev || prev.col !== col) return { col, dir: 'asc' }
+      if (prev.dir === 'asc') return { col, dir: 'desc' }
+      return null  // 3回目でソート解除
+    })
+  }
 
   const TabBtn = ({ id, icon, label }: { id: Tab; icon: React.ReactNode; label: string }) => {
     const disabled = (id === 'chart' && !canChart) || (id === 'sql' && !sql) || (id === 'table' && !table)
@@ -560,15 +586,26 @@ function GenieResultCard({ result }: { result: GenieResult }) {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50/60 border-b border-gray-200">
-                {table.columns.map((col) => (
-                  <th key={col} className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">
-                    {col}
-                  </th>
-                ))}
+                {table.columns.map((col, ci) => {
+                  const isSorted = sort?.col === ci
+                  const arrow = !isSorted ? '↕' : sort?.dir === 'asc' ? '↑' : '↓'
+                  return (
+                    <th
+                      key={col}
+                      onClick={() => toggleSort(ci)}
+                      className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap cursor-pointer select-none hover:bg-gray-100"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {col}
+                        <span className={`text-[10px] ${isSorted ? 'text-[#FF3621]' : 'text-gray-300'}`}>{arrow}</span>
+                      </span>
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
-              {table.rows.map((row, ri) => (
+              {sortedRows.map((row, ri) => (
                 <tr key={ri} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
                   {row.map((cell, ci) => (
                     <td key={ci} className={`px-3 py-2 text-gray-800 ${isNumeric(cell) ? 'text-right font-medium' : ''}`}>
@@ -603,6 +640,79 @@ function GenieResultCard({ result }: { result: GenieResult }) {
   )
 }
 
+// assistant メッセージ 1 件 (バブル + 結果カード + メール送信ボタン)
+// ※ メール送信はデモ演出のみ。実際の送信はしない。
+function AssistantMessageCard({
+  content,
+  results,
+  isStreaming,
+  onSendEmail,
+}: {
+  content: string
+  results: GenieResult[]
+  isStreaming: boolean
+  onSendEmail: () => void
+}) {
+  const [sending, setSending] = useState(false)
+  const canSend = !isStreaming && (content.trim().length > 0 || results.length > 0)
+
+  return (
+    <div className="w-full">
+      <div className="rounded-xl px-4 py-3 text-sm bg-gray-50 border border-gray-200 text-gray-800">
+        {content ? (
+          <MarkdownContent content={content} />
+        ) : (
+          <span className="flex items-center gap-1.5 text-gray-400">
+            <FiLoader className="w-3.5 h-3.5 animate-spin text-blue-500" />
+            データを分析中...
+          </span>
+        )}
+      </div>
+      {results.map((r, ri) => (
+        <GenieResultCard key={ri} result={r} />
+      ))}
+
+      {canSend && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            disabled={sending}
+            onClick={async () => {
+              setSending(true)
+              await new Promise((res) => setTimeout(res, 700))
+              setSending(false)
+              onSendEmail()
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 transition-colors"
+          >
+            <FiMail className="w-3.5 h-3.5" />
+            {sending ? '送信中…' : 'メールで送る'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// 画面右下に一時表示される送信成功トースト
+function SendEmailToast({ email, onClose }: { email: string; onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 3500)
+    return () => clearTimeout(t)
+  }, [onClose])
+  return (
+    <div className="fixed bottom-6 right-6 z-50 bg-white border border-gray-200 shadow-lg rounded-xl px-4 py-3 flex items-center gap-3 text-sm animate-[fadeIn_0.2s_ease-out]">
+      <div className="w-8 h-8 rounded-full bg-green-50 border border-green-100 flex items-center justify-center">
+        <FiMail className="w-4 h-4 text-green-600" />
+      </div>
+      <div>
+        <p className="font-semibold text-gray-900">メールを送信しました</p>
+        <p className="text-xs text-gray-500">宛先: {email || '(あなた)'}</p>
+      </div>
+    </div>
+  )
+}
+
 // Genie Space の sample_questions を API で取得。fetch 失敗時はこちらを表示。
 const PRESET_QUESTIONS_FALLBACK = [
   'SUVとミニバンで成約単価が高いのはどっち？車種別に比較して',
@@ -629,6 +739,7 @@ export function MyPage() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [sampleQuestions, setSampleQuestions] = useState<string[]>(PRESET_QUESTIONS_FALLBACK)
+  const [toast, setToast] = useState<{ email: string } | null>(null)
   const sessionId = useRef(`mypage_${Date.now()}`)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -943,36 +1054,34 @@ export function MyPage() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              {messages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {msg.role === 'assistant' && (
+              {messages.map((msg, i) => {
+                if (msg.role === 'user') {
+                  return (
+                    <div key={i} className="flex justify-end">
+                      <div className="max-w-[85%] rounded-xl px-4 py-3 text-sm bg-blue-600 text-white">
+                        {msg.content}
+                      </div>
+                    </div>
+                  )
+                }
+                // assistant
+                const isStreaming = sending && i === messages.length - 1
+                return (
+                  <div key={i} className="flex justify-start">
                     <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
                       <HiOutlineSparkles className="w-3.5 h-3.5 text-white" />
                     </div>
-                  )}
-                  <div className={`max-w-[85%] ${msg.role === 'user' ? '' : 'w-full'}`}>
-                    <div
-                      className={`rounded-xl px-4 py-3 text-sm ${
-                        msg.role === 'user'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-50 border border-gray-200 text-gray-800'
-                      }`}
-                    >
-                      {msg.role === 'assistant' ? (
-                        msg.content ? <MarkdownContent content={msg.content} /> : (
-                          <span className="flex items-center gap-1.5 text-gray-400">
-                            <FiLoader className="w-3.5 h-3.5 animate-spin text-blue-500" />
-                            データを分析中...
-                          </span>
-                        )
-                      ) : msg.content}
+                    <div className="max-w-[85%] w-full">
+                      <AssistantMessageCard
+                        content={msg.content}
+                        results={msg.results}
+                        isStreaming={isStreaming}
+                        onSendEmail={() => setToast({ email: currentUser.email || '' })}
+                      />
                     </div>
-                    {msg.results.map((result, ri) => (
-                      <GenieResultCard key={ri} result={result} />
-                    ))}
                   </div>
-                </div>
-              ))}
+                )
+              })}
               <div ref={chatEndRef} />
             </div>
 
@@ -1001,6 +1110,7 @@ export function MyPage() {
           </div>
         </div>
       </div>
+      {toast && <SendEmailToast email={toast.email} onClose={() => setToast(null)} />}
     </div>
   )
 }
