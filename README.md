@@ -225,17 +225,20 @@ car_ai_agent/
 │   ├── setup_job.yml
 │   └── app.yml
 │
-└── setup/                      ⚙️ 自動化スクリプト（Job が呼ぶ）
-    ├── genie_spaces.yaml       Genie の中身（instructions/sample_questions 等）
-    ├── knowledge_assistant.yaml KA の中身
-    ├── multi_agent_supervisor.yaml MAS の中身
-    ├── create_genies.py        ↑の定義を読んで API で作成
-    ├── create_ka.py
-    ├── create_mas.py
-    ├── grant_app_perms.py
-    ├── register_config.py
-    ├── create_dashboard.py     AI/BI ダッシュボードを Lakeview API でデプロイ
-    └── print_summary.py
+├── setup/                      ⚙️ 自動化スクリプト（Job が呼ぶ）
+│   ├── genie_spaces.yaml       Genie の中身（instructions/sample_questions 等）
+│   ├── knowledge_assistant.yaml KA の中身
+│   ├── multi_agent_supervisor.yaml MAS の中身
+│   ├── create_genies.py        ↑の定義を読んで API で作成
+│   ├── create_ka.py
+│   ├── create_mas.py
+│   ├── grant_app_perms.py
+│   ├── register_config.py
+│   ├── create_dashboard.py     AI/BI ダッシュボードを Lakeview API でデプロイ
+│   └── print_summary.py
+│
+└── scripts/                    🧹 運用スクリプト（ローカルから叩く）
+    └── teardown.sh             デモの全削除（再現性テスト用）
 ```
 
 ---
@@ -267,16 +270,68 @@ SELECT key, value, description FROM <catalog>.<schema>._app_config ORDER BY key;
 
 ---
 
-## 🧹 全削除
+## 🧹 全削除 & 再現性テスト
+
+### teardown スクリプト（推奨）
+
+付属の `scripts/teardown.sh` が DAB 管理外のリソース（Dashboard / MAS / KA / Genie ×3）まで含めて一括削除します。
 
 ```bash
-# 1. DAB 管理リソース（Job + App + workspace ファイル）
+# UC データは残して、それ以外を全削除
+./scripts/teardown.sh --profile <プロファイル>
+
+# UC Schema (Bronze/Silver/Gold テーブル・Volume・raw data) も削除
+./scripts/teardown.sh --profile <プロファイル> --drop-schema
+
+# 確認プロンプトもスキップ
+./scripts/teardown.sh --profile <プロファイル> --drop-schema --yes
+```
+
+内部的に実行される順番:
+
+1. `_app_config` テーブルから各リソースの ID を取得
+2. AI/BI Dashboard 削除（Lakeview API）
+3. Multi-Agent Supervisor endpoint 削除
+4. Knowledge Assistant endpoint 削除
+5. Genie Spaces ×3 削除
+6. `databricks bundle destroy`（Job / App / workspace files）
+7. `DROP SCHEMA ... CASCADE`（`--drop-schema` 指定時のみ）
+
+### 真のクリーンスレート検証（他 SA 視点の再現テスト）
+
+他 SA が `git clone` から始めたときと同じ状態をシミュレートするには:
+
+```bash
+# 1. 現在の環境を完全削除
+./scripts/teardown.sh --profile <プロファイル> --drop-schema --yes
+
+# 2. ローカルを clean clone し直す
+cd ..
+rm -rf car_agent
+git clone https://github.com/komae5519pv/car_agent.git
+cd car_agent
+
+# 3. 自分用の設定に書き換え (databricks.yml の catalog / schema / warehouse_id)
+#    → 他 SA が実際に行う作業と同じ
+
+# 4. ゼロから再デプロイ
+databricks bundle deploy      --profile <プロファイル>
+databricks bundle run setup_demo --profile <プロファイル>
+databricks bundle run car_agent  --profile <プロファイル>
+```
+
+⚠️ 並行環境（同一ワークスペースで dev と test を同時に立てる）は DAB の Terraform state 共有の都合で**動きません**。destroy → redeploy の一方通行で検証してください。
+
+### 手動削除（スクリプトを使わない場合）
+
+```bash
+# DAB 管理リソース（Job + App + workspace ファイル）
 databricks bundle destroy --profile <プロファイル> --auto-approve
 
-# 2. DAB 管理外（Genie / KA / MAS）は Databricks UI から削除
-#    or 放置（次回 setup_demo 実行時に冪等に上書きされる）
+# DAB 管理外（Genie / KA / MAS / Dashboard）は Databricks UI から削除
+# または同じ名前で setup_demo を再実行すれば冪等に上書きされる
 
-# 3. UC スキーマ削除（データを完全消去したい場合）
+# UC スキーマ削除
 databricks api post /api/2.0/sql/statements --json \
   '{"warehouse_id":"<id>","statement":"DROP SCHEMA IF EXISTS <catalog>.<schema> CASCADE"}' \
   --profile <プロファイル>

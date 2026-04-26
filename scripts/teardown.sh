@@ -2,6 +2,10 @@
 # =====================================================================
 # scripts/teardown.sh — car-agent デモの全削除スクリプト
 #
+# このスクリプトは現在デプロイされている car-agent デモのリソースを
+# すべて削除します。他 SA への配布前に「真っさらな状態から再デプロイする」
+# フローを検証するために使ってください。
+#
 # 削除順序 (依存関係に従う):
 #   1. _app_config からリソース ID を取得
 #   2. AI/BI Dashboard        (Lakeview API)
@@ -12,17 +16,17 @@
 #   7. [optional] UC Schema    (--drop-schema 指定時のみ)
 #
 # 使い方:
-#   ./scripts/teardown.sh --profile <profile>                         # 本番環境を削除
-#   ./scripts/teardown.sh --profile <profile> --env-suffix -test       # 並行テスト環境のみ削除
-#   ./scripts/teardown.sh --profile <profile> --drop-schema --yes      # UC スキーマまで全消去
+#   ./scripts/teardown.sh --profile <profile>                             # UC 以外を全削除
+#   ./scripts/teardown.sh --profile <profile> --drop-schema               # UC Schema も削除
+#   ./scripts/teardown.sh --profile <profile> --drop-schema --yes         # 確認なしで実行
 #
 # 依存: databricks CLI v0.230+, python3 (JSON パース用)
 # =====================================================================
 set -euo pipefail
 
-# ---- デフォルト値 ----
+# ---- デフォルト値 (databricks.yml と同期) ----
 PROFILE=""
-ENV_SUFFIX=""
+TARGET="dev"
 CATALOG="konomi_demo_catalog"
 SCHEMA="car_agent"
 WAREHOUSE_ID="348478745ad64b30"
@@ -35,7 +39,7 @@ Usage: $0 --profile <profile> [options]
 
 Options:
   --profile <name>       Databricks CLI profile (必須)
-  --env-suffix <suffix>  リソース名接尾辞 (例: -test)。bundle destroy に渡す
+  --target <name>        DAB target (default: dev)
   --catalog <name>       UC catalog 名 (default: $CATALOG)
   --schema <name>        UC schema 名 (default: $SCHEMA)
   --warehouse-id <id>    _app_config 読み取り用 warehouse ID (default: $WAREHOUSE_ID)
@@ -48,7 +52,7 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile)       PROFILE="$2"; shift 2;;
-    --env-suffix)    ENV_SUFFIX="$2"; shift 2;;
+    --target|-t)     TARGET="$2"; shift 2;;
     --catalog)       CATALOG="$2"; shift 2;;
     --schema)        SCHEMA="$2"; shift 2;;
     --warehouse-id)  WAREHOUSE_ID="$2"; shift 2;;
@@ -71,7 +75,7 @@ export PATH="/opt/homebrew/bin:$PATH"
 echo "======================================================================"
 echo "  car-agent teardown"
 echo "  Profile      : $PROFILE"
-echo "  env_suffix   : ${ENV_SUFFIX:-<none>}"
+echo "  Target       : $TARGET"
 echo "  Catalog      : $CATALOG"
 echo "  Schema       : $SCHEMA"
 echo "  Warehouse    : $WAREHOUSE_ID"
@@ -138,7 +142,7 @@ if [[ "$YES" != "true" ]]; then
   echo "----------------------------------------------------------------------"
   echo "  これから削除します:"
   echo "    - AI/BI Dashboard / MAS / KA / Genie Spaces ×3"
-  echo "    - DAB 管理: Job / App / workspace files (bundle destroy)"
+  echo "    - DAB 管理: Job / App / workspace files (bundle destroy -t $TARGET)"
   if [[ "$DROP_SCHEMA" == "true" ]]; then
     echo "    - UC Schema: $CATALOG.$SCHEMA (DROP ... CASCADE)"
   fi
@@ -201,13 +205,9 @@ done
 # 7. DAB リソース削除 (Job + App + workspace files)
 # =====================================================================
 echo ""
-echo "=== DAB 管理リソース削除 (bundle destroy) ==="
-BUNDLE_ARGS=(--profile "$PROFILE" --auto-approve)
-if [[ -n "$ENV_SUFFIX" ]]; then
-  BUNDLE_ARGS+=(--var "env_suffix=$ENV_SUFFIX")
-fi
-echo "  cmd: databricks bundle destroy ${BUNDLE_ARGS[*]}"
-databricks bundle destroy "${BUNDLE_ARGS[@]}" || echo "  ⚠️  bundle destroy failed"
+echo "=== DAB 管理リソース削除 (bundle destroy -t $TARGET) ==="
+echo "  cmd: databricks bundle destroy -t $TARGET --profile $PROFILE --auto-approve"
+databricks bundle destroy -t "$TARGET" --profile "$PROFILE" --auto-approve || echo "  ⚠️  bundle destroy failed"
 
 # =====================================================================
 # 8. UC Schema 削除 (optional)
@@ -230,4 +230,12 @@ fi
 echo ""
 echo "======================================================================"
 echo "  teardown 完了"
+echo ""
+echo "  次のステップ（真のクリーンスレート検証）:"
+echo "    1. ローカルの clone を削除して git から再取得:"
+echo "       rm -rf car_agent && git clone <repo-url>"
+echo "    2. databricks.yml の catalog/schema/warehouse_id を自分用に書き換え"
+echo "    3. databricks bundle deploy --profile $PROFILE"
+echo "    4. databricks bundle run setup_demo --profile $PROFILE"
+echo "    5. databricks bundle run car_agent --profile $PROFILE"
 echo "======================================================================"
