@@ -135,6 +135,33 @@ except Exception:
     CUSTOMER_LIMIT = None
 # =========================================================
 
+# ========== 事前生成済み Gold データ (デモ映え担保) ==========
+# デモ主役の 10 名（CUST-0001 ~ CUST-0010）については、setup/gold_prebuilt_data.json
+# から手作業で作り込んだインサイト・レコメンドを読み込み、LLM 呼び出しをスキップします。
+# 未登録顧客は従来通り LLM で生成します。
+#
+# JSON を再生成したい場合は、本ファイル末尾の「LLM で全顧客を生成（参考コード）」を
+# 有効化して結果をエクスポートしてください。
+_prebuilt_path_candidates = [
+    # Workspace / Job 実行時
+    f"/Workspace{os.path.dirname(dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get())}/setup/gold_prebuilt_data.json",
+    # ローカル開発時
+    os.path.join(os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir() else '.', 'setup', 'gold_prebuilt_data.json'),
+]
+PREBUILT_DATA = {"insights": {}, "recommendations": {}}
+for _p in _prebuilt_path_candidates:
+    try:
+        with open(_p, encoding='utf-8') as _f:
+            PREBUILT_DATA = json.load(_f)
+            print(f"✓ 事前生成データ読込: {_p}")
+            print(f"  insights: {len(PREBUILT_DATA.get('insights', {}))} 件, recommendations: {len(PREBUILT_DATA.get('recommendations', {}))} 件")
+            break
+    except Exception as _e:
+        continue
+else:
+    print("⚠️ 事前生成データが見つかりません。全顧客を LLM で生成します。")
+# =========================================================
+
 print(f"LLM Model: {LLM_MODEL}")
 print(f"Schema: {CATALOG}.{SCHEMA}")
 print(f"Sales Rep: {SALES_REP_NAME}")
@@ -329,35 +356,41 @@ def build_insight_prompt(customer_row, interactions, web):
 
 # COMMAND ----------
 
-# DBTITLE 1,インサイト LLM 生成 + MERGE
+# DBTITLE 1,インサイト生成（prebuilt 優先・未登録は LLM）+ MERGE
 insights_records = []
+
+_prebuilt_insights = PREBUILT_DATA.get("insights", {})
 
 for i, c in enumerate(customer_rows):
     cid = c["customer_id"]
     opp_id = c["sf_opportunity_id"]
     print(f"  [{i+1}/{len(customer_rows)}] {c['contact_name']} ...", end=" ")
 
-    # インタラクション取得
-    interactions = interactions_by_customer.get(cid, [])
-    # Web 閲覧行動取得（sf_opportunity_id で参照）
-    web = web_by_opp.get(opp_id)
+    if cid in _prebuilt_insights:
+        # ---- Prebuilt データを採用（LLM スキップ） ----
+        result = _prebuilt_insights[cid]
+        print("prebuilt")
+    else:
+        # ---- LLM で生成 ----
+        interactions = interactions_by_customer.get(cid, [])
+        web = web_by_opp.get(opp_id)
+        user_prompt = build_insight_prompt(c, interactions, web)
 
-    user_prompt = build_insight_prompt(c, interactions, web)
-
-    try:
-        raw = call_llm(INSIGHT_SYSTEM_PROMPT, user_prompt)
-        result = parse_json_response(raw)
-    except Exception as e:
-        print(f"ERROR: {str(e)[:80]}")
-        result = {
-            "deep_needs": [],
-            "purchase_signals": [],
-            "decision_key": "生成エラー",
-            "purchase_urgency": "中",
-            "urgency_reason": "生成エラー",
-            "channel_insights": {"visit": "", "line": "", "callcenter": "", "web": ""},
-            "summary": "生成エラー",
-        }
+        try:
+            raw = call_llm(INSIGHT_SYSTEM_PROMPT, user_prompt)
+            result = parse_json_response(raw)
+            print("llm done")
+        except Exception as e:
+            print(f"ERROR: {str(e)[:80]}")
+            result = {
+                "deep_needs": [],
+                "purchase_signals": [],
+                "decision_key": "生成エラー",
+                "purchase_urgency": "中",
+                "urgency_reason": "生成エラー",
+                "channel_insights": {"visit": "", "line": "", "callcenter": "", "web": ""},
+                "summary": "生成エラー",
+            }
 
     ch = result.get("channel_insights", {})
 
@@ -379,7 +412,6 @@ for i, c in enumerate(customer_rows):
         "summary": result.get("summary", ""),
         "processed_at": datetime.now(timezone.utc),
     })
-    print("done")
 
 print(f"\nインサイト生成完了: {len(insights_records)} 件")
 
@@ -517,9 +549,11 @@ def build_recommendation_prompt(customer_row, insights_row, inventory_list):
 
 # COMMAND ----------
 
-# DBTITLE 1,レコメンデーション LLM 生成
+# DBTITLE 1,レコメンデーション生成（prebuilt 優先・未登録は LLM）
 # インサイト結果を辞書に変換（customer_id → インサイト行）
 insights_dict = {r["customer_id"]: r for r in insights_records}
+
+_prebuilt_recs = PREBUILT_DATA.get("recommendations", {})
 
 rec_records = []
 
@@ -532,16 +566,22 @@ for i, c in enumerate(customer_rows):
         print("SKIP (no insight)")
         continue
 
-    user_prompt = build_recommendation_prompt(c, insight, vehicle_rows)
-
-    try:
-        raw = call_llm(RECOMMENDATION_SYSTEM_PROMPT, user_prompt)
-        recs = parse_json_response(raw)
-        if not isinstance(recs, list):
+    if cid in _prebuilt_recs:
+        # ---- Prebuilt データを採用（LLM スキップ） ----
+        recs = _prebuilt_recs[cid]
+        print(f"prebuilt ({len(recs)} recs)")
+    else:
+        # ---- LLM で生成 ----
+        user_prompt = build_recommendation_prompt(c, insight, vehicle_rows)
+        try:
+            raw = call_llm(RECOMMENDATION_SYSTEM_PROMPT, user_prompt)
+            recs = parse_json_response(raw)
+            if not isinstance(recs, list):
+                recs = []
+        except Exception as e:
+            print(f"ERROR: {str(e)[:80]}")
             recs = []
-    except Exception as e:
-        print(f"ERROR: {str(e)[:80]}")
-        recs = []
+        print(f"llm done ({len(recs[:3])} recs)")
 
     for rec in recs[:3]:
         vkey = rec.get("vehicle_key", "")
@@ -563,7 +603,6 @@ for i, c in enumerate(customer_rows):
             "image_path": image_path,
             "generated_at": datetime.now(timezone.utc),
         })
-    print(f"done ({len(recs[:3])} recs)")
 
 print(f"\nレコメンデーション生成完了: {len(rec_records)} 件")
 
