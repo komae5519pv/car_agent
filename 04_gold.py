@@ -14,16 +14,17 @@
 # MAGIC <div style="border-left: 4px solid #1976d2; background-color: #e3f2fd; padding: 15px 20px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
 # MAGIC   <div style="font-weight: bold; color: #1976d2; margin-bottom: 5px;">概要</div>
 # MAGIC   <div style="color: #0D47A1;">
-# MAGIC     Silver テーブルのデータに対して LLM（Foundation Model API）を使い、<b>顧客インサイト</b>と<b>車両レコメンデーション</b>を生成します。<br>
-# MAGIC     処理コスト削減のため、<code>SALES_REP_NAME</code>（00_config で設定）に紐づく顧客のみを対象にします。
+# MAGIC     Silver テーブルのデータから <b>顧客インサイト</b> と <b>車両レコメンデーション</b> の Gold テーブルを生成します。<br>
+# MAGIC     対象は <code>SALES_REP_NAME</code>（00_config で設定）に紐づく顧客のみです。
 # MAGIC   </div>
 # MAGIC </div>
 # MAGIC
-# MAGIC <div style="border-left: 4px solid #F57C00; background-color: #FFF3E0; padding: 15px 20px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
-# MAGIC   <div style="font-weight: bold; color: #F57C00; margin-bottom: 5px;">LLM コスト注意</div>
-# MAGIC   <div style="color: #E65100;">
-# MAGIC     LLM API 呼び出しを行うため、対象顧客数に比例してコストと処理時間が発生します。<br>
-# MAGIC     デフォルトでは <code>SALES_REP_NAME</code> 担当の顧客（約10件）のみ処理します。
+# MAGIC <div style="border-left: 4px solid #388E3C; background-color: #E8F5E9; padding: 15px 20px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
+# MAGIC   <div style="font-weight: bold; color: #388E3C; margin-bottom: 5px;">⚡ パイプライン速度優先：LLM 呼び出しなし</div>
+# MAGIC   <div style="color: #2E7D32;">
+# MAGIC     本ノートブックは <b>LLM API を呼びません</b>。デモ主役 10 名は <code>setup/gold_prebuilt_data.json</code> の手作り内容、<br>
+# MAGIC     それ以外の担当顧客は顧客プロフィールからの決定論テンプレで生成します。結果として build_gold は数秒〜1分で完了します。<br>
+# MAGIC     <i>LLM で全顧客を生成したい場合は別スクリプトを用意してください（本 notebook からは削除済み）。</i>
 # MAGIC   </div>
 # MAGIC </div>
 # MAGIC
@@ -40,13 +41,13 @@
 # MAGIC     <tr style="background: #FFFFFF;">
 # MAGIC       <td style="padding: 8px 16px;">1</td>
 # MAGIC       <td style="padding: 8px 16px;"><code>gd_customer_insights</code></td>
-# MAGIC       <td style="padding: 8px 16px;">LLM + MERGE</td>
+# MAGIC       <td style="padding: 8px 16px;">JSON / テンプレ + MERGE</td>
 # MAGIC       <td style="padding: 8px 16px;">顧客インサイト（深層ニーズ・購買シグナル・チャネル分析）</td>
 # MAGIC     </tr>
 # MAGIC     <tr style="background: #F5F5F5;">
 # MAGIC       <td style="padding: 8px 16px;">2</td>
 # MAGIC       <td style="padding: 8px 16px;"><code>gd_recommendations</code></td>
-# MAGIC       <td style="padding: 8px 16px;">LLM + MERGE</td>
+# MAGIC       <td style="padding: 8px 16px;">JSON / テンプレ + MERGE</td>
 # MAGIC       <td style="padding: 8px 16px;">車両レコメンデーション（顧客毎に3車種 + トークスクリプト）</td>
 # MAGIC     </tr>
 # MAGIC     <tr style="background: #FFFFFF;">
@@ -64,14 +65,14 @@
 # MAGIC       <span style="background: #1565C0; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">1</span>
 # MAGIC       <span style="font-weight: bold;">初期化</span>
 # MAGIC     </div>
-# MAGIC     <div style="font-size: 13px; color: #555;">ライブラリ読込・LLM クライアント初期化・ヘルパー関数定義</div>
+# MAGIC     <div style="font-size: 13px; color: #555;">ライブラリ読込・事前生成 JSON 読込・ヘルパー関数定義</div>
 # MAGIC   </div>
 # MAGIC   <div style="background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
 # MAGIC     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
 # MAGIC       <span style="background: #1565C0; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">2</span>
-# MAGIC       <span style="font-weight: bold;">LLM 処理</span>
+# MAGIC       <span style="font-weight: bold;">Gold 生成</span>
 # MAGIC     </div>
-# MAGIC     <div style="font-size: 13px; color: #555;">顧客インサイト生成 → 車両レコメンデーション生成（MERGE で差分更新）</div>
+# MAGIC     <div style="font-size: 13px; color: #555;">JSON / テンプレから顧客インサイト → 車両レコメンデーションを生成（MERGE で差分更新）</div>
 # MAGIC   </div>
 # MAGIC   <div style="background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
 # MAGIC     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
@@ -84,40 +85,17 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install openai mlflow -q
-# MAGIC dbutils.library.restartPython()
-
-# COMMAND ----------
-
 # MAGIC %run ./00_config
 
 # COMMAND ----------
 
 import json
-import re
+import os
 from datetime import datetime, timezone
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
     StructType, StructField, StringType, IntegerType, FloatType,
     TimestampType, DateType, LongType, ArrayType
-)
-from openai import OpenAI
-import mlflow
-
-from databricks.sdk import WorkspaceClient
-import os
-
-w = WorkspaceClient()
-host  = w.config.host or os.environ.get("DATABRICKS_HOST", "")
-token = (
-    w.config.token
-    or os.environ.get("DATABRICKS_TOKEN")
-    or dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
-)
-
-client = OpenAI(
-    api_key=token,
-    base_url=f"{host}/serving-endpoints"
 )
 
 # 00_config の変数を参照
@@ -137,11 +115,9 @@ except Exception:
 
 # ========== 事前生成済み Gold データ (デモ映え担保) ==========
 # デモ主役の 10 名（CUST-0001 ~ CUST-0010）については、setup/gold_prebuilt_data.json
-# から手作業で作り込んだインサイト・レコメンドを読み込み、LLM 呼び出しをスキップします。
-# 未登録顧客は従来通り LLM で生成します。
-#
-# JSON を再生成したい場合は、本ファイル末尾の「LLM で全顧客を生成（参考コード）」を
-# 有効化して結果をエクスポートしてください。
+# から手作業で作り込んだインサイト・レコメンドを読み込みます。
+# それ以外の担当顧客は、下方の _template_insight / _template_recommendations で
+# 顧客プロフィールから決定論テンプレで生成します（LLM 呼び出しなし）。
 _prebuilt_path_candidates = [
     # Workspace / Job 実行時
     f"/Workspace{os.path.dirname(dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get())}/setup/gold_prebuilt_data.json",
@@ -159,10 +135,9 @@ for _p in _prebuilt_path_candidates:
     except Exception as _e:
         continue
 else:
-    print("⚠️ 事前生成データが見つかりません。全顧客を LLM で生成します。")
+    print("⚠️ 事前生成データが見つかりません。全顧客テンプレートで生成します。")
 # =========================================================
 
-print(f"LLM Model: {LLM_MODEL}")
 print(f"Schema: {CATALOG}.{SCHEMA}")
 print(f"Sales Rep: {SALES_REP_NAME}")
 if CUSTOMER_LIMIT:
@@ -177,32 +152,6 @@ def add_comments(table: str, tbl_comment: str, col_comments: dict):
     for col, comment in col_comments.items():
         spark.sql(f"ALTER TABLE {CATALOG}.{SCHEMA}.{table} ALTER COLUMN `{col}` COMMENT '{comment}'")
     print(f"  コメント設定完了: {table}")
-
-
-@mlflow.trace
-def call_llm(system_prompt: str, user_prompt: str, model: str = None) -> str:
-    """LLM を呼び出してテキスト応答を返す"""
-    if model is None:
-        model = LLM_MODEL
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        max_tokens=2000,
-        temperature=0.3
-    )
-    return response.choices[0].message.content
-
-
-def parse_json_response(text: str):
-    """LLM 応答から JSON を抽出してパースする"""
-    cleaned = text.strip()
-    # マークダウンコードブロックを除去
-    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-    cleaned = re.sub(r"\s*```$", "", cleaned)
-    return json.loads(cleaned.strip())
 
 # COMMAND ----------
 
@@ -265,132 +214,66 @@ if CUSTOMER_LIMIT:
 
 print(f"対象顧客数: {len(customer_rows)} 件（担当: {SALES_REP_NAME}）")
 
-# インタラクション履歴を取得（顧客ごとにグループ化用）
-df_interactions = spark.sql(f"""
-    SELECT customer_id, interaction_type, interaction_date, content, sales_rep_name
-    FROM {CATALOG}.{SCHEMA}.sv_interactions
-    ORDER BY customer_id, interaction_date
-""")
-interactions_all = df_interactions.collect()
-
-# 顧客ごとのインタラクションを辞書にまとめる
-interactions_by_customer = {}
-for row in interactions_all:
-    cid = row["customer_id"]
-    if cid not in interactions_by_customer:
-        interactions_by_customer[cid] = []
-    interactions_by_customer[cid].append(row)
-
-# Web 閲覧行動を取得（sf_opportunity_id でジョイン）
-df_web = spark.sql(f"""
-    SELECT *
-    FROM {CATALOG}.{SCHEMA}.sv_web_browsing_behavior
-""")
-web_all = df_web.collect()
-
-# sf_opportunity_id → Web 閲覧データの辞書
-web_by_opp = {}
-for row in web_all:
-    web_by_opp[row["sf_opportunity_id"]] = row
-
-print(f"インタラクション: {len(interactions_all)} 件")
-print(f"Web 閲覧行動: {len(web_all)} 件")
-
 # COMMAND ----------
 
-# DBTITLE 1,インサイト生成プロンプト
-
-INSIGHT_SYSTEM_PROMPT = """あなたは中古車販売会社の顧客分析AIです。
-顧客の来店記録・LINEメッセージ・コールセンター通話・Web 閲覧履歴を分析し、
-顧客の深層ニーズと購買意欲を抽出してください。
-
-【重要】各項目は簡潔に。長い文章は禁止。体言止め・短縮表現を使い、ぱっと見でわかる短さにすること。
-
-以下のJSON形式で回答してください（マークダウンや余分な文字を含めないこと）:
-{
-  "deep_needs": ["短いフレーズ（20文字以内）", "例：義母含む5人の乗降性重視", "例：燃費・最新安全装備も気になる", "例：ミニバンとSUV両方検討中"],
-  "purchase_signals": ["短いフレーズ（20文字以内）", "例：来店2回・LINE積極的"],
-  "decision_key": "短い一文（30文字以内）例：義母の乗降性と安全装備が決め手",
-  "purchase_urgency": "高/中/低",
-  "urgency_reason": "短い根拠（40文字以内）例：来月の車検前に決めたい意向あり",
-  "channel_insights": {
-    "visit": "1文で簡潔に（40文字以内）",
-    "line": "1文で簡潔に（40文字以内）",
-    "callcenter": "1文で簡潔に（40文字以内）",
-    "web": "1文で簡潔に（40文字以内）"
-  },
-  "key_quotes": ["印象的な発言1（25〜40文字の口語体）", "例：子供たちが快適に座れる車がいいんですよね", "例：義母の乗り降りが楽な車がいいなと思って"],
-  "summary": "顧客の本音を一言で（20〜30文字）例：家族全員が快適に乗れる車が欲しい"
-}"""
-
-
-def build_insight_prompt(customer_row, interactions, web):
-    """顧客情報・インタラクション・Web 閲覧行動からプロンプトを構築"""
-    lines = [
-        f"顧客名: {customer_row['contact_name']}",
-        f"年齢: {customer_row['age']}歳",
-        f"職業: {customer_row['occupation']}",
-        f"家族構成: {customer_row['family_detail']}",
-        f"現在の車: {customer_row['current_vehicle']} ({customer_row['current_mileage']:,}km)",
-        f"予算上限: {customer_row['budget']:,}円",
-        f"来店予定日: {customer_row['visit_scheduled_date']}",
-        "",
-        "【インタラクション履歴】"
-    ]
-    for row in interactions:
-        lines.append(f"[{row['interaction_type']} / {row['interaction_date']}]")
-        lines.append(row["content"][:500])
-        lines.append("")
-
-    if web:
-        lines += [
-            "【Web 閲覧行動】",
-            f"総セッション数: {web['session_count']}",
-            f"総閲覧数: {web['view_count']}",
-            f"検索キーワード: {web['search_keywords']}",
-            f"閲覧車両: {web['viewed_vehicles']}",
-            f"お気に入り登録数: {web['favorite_count']}件",
-        ]
-
-    return "\n".join(lines)
-
-# COMMAND ----------
-
-# DBTITLE 1,インサイト生成（prebuilt 優先・未登録は LLM）+ MERGE
+# DBTITLE 1,インサイト生成（全件 JSON/テンプレから。LLM 呼び出しなし）
+#
+# デモ主役 10 名（CUST-0001〜0010）は setup/gold_prebuilt_data.json の手作り content を使用。
+# それ以外（大前このみ担当の 117 名）は顧客プロフィールからの**決定論テンプレ**で埋めます。
+# 117 名はデモで表示しない前提のフィラーデータなので、品質よりもパイプライン速度を優先しています。
+# ---------------------------------------------------------------------------
 insights_records = []
 
 _prebuilt_insights = PREBUILT_DATA.get("insights", {})
 
+
+def _template_insight(c) -> dict:
+    """プロフィールから機械的にインサイトを生成（LLM 不使用）。"""
+    persona = c.get("persona_type") or "個人ユーザー"
+    family = c.get("family_detail") or "個人"
+    prefs = c.get("preferences") or "バランス重視"
+    current = c.get("current_vehicle") or "現車未登録"
+    budget_man = (c.get("budget") or 0) // 10000
+    return {
+        "deep_needs": [
+            f"{persona}としての実用性",
+            f"家族構成「{family}」に合う広さ・乗降性",
+            f"重視点: {prefs}",
+        ],
+        "purchase_signals": [
+            f"予算上限 {budget_man} 万円で具体検討中",
+            f"現車: {current}",
+        ],
+        "decision_key": f"{prefs} と予算 {budget_man} 万円のバランス",
+        "purchase_urgency": "中",
+        "urgency_reason": "来店・問い合わせ履歴から標準的な検討フェーズと判定",
+        "channel_insights": {
+            "visit": f"{persona} 向け定番車種の案内に反応",
+            "line": "標準的な問い合わせ履歴",
+            "callcenter": "在庫・価格の一般的な確認",
+            "web": f"{prefs} に関連する車種を複数閲覧",
+        },
+        "key_quotes": [
+            f"{prefs}を重視したいです",
+            f"予算は {budget_man} 万円くらいで",
+        ],
+        "summary": f"{persona}。{prefs}",
+    }
+
+
 for i, c in enumerate(customer_rows):
     cid = c["customer_id"]
     opp_id = c["sf_opportunity_id"]
-    print(f"  [{i+1}/{len(customer_rows)}] {c['contact_name']} ...", end=" ")
 
     if cid in _prebuilt_insights:
-        # ---- Prebuilt データを採用（LLM スキップ） ----
         result = _prebuilt_insights[cid]
-        print("prebuilt")
+        tag = "prebuilt"
     else:
-        # ---- LLM で生成 ----
-        interactions = interactions_by_customer.get(cid, [])
-        web = web_by_opp.get(opp_id)
-        user_prompt = build_insight_prompt(c, interactions, web)
+        result = _template_insight(c)
+        tag = "template"
 
-        try:
-            raw = call_llm(INSIGHT_SYSTEM_PROMPT, user_prompt)
-            result = parse_json_response(raw)
-            print("llm done")
-        except Exception as e:
-            print(f"ERROR: {str(e)[:80]}")
-            result = {
-                "deep_needs": [],
-                "purchase_signals": [],
-                "decision_key": "生成エラー",
-                "purchase_urgency": "中",
-                "urgency_reason": "生成エラー",
-                "channel_insights": {"visit": "", "line": "", "callcenter": "", "web": ""},
-                "summary": "生成エラー",
-            }
+    if (i + 1) % 20 == 0 or i == 0 or i == len(customer_rows) - 1:
+        print(f"  [{i+1}/{len(customer_rows)}] {c['contact_name']} ({tag})")
 
     ch = result.get("channel_insights", {})
 
@@ -498,90 +381,78 @@ for v in vehicle_rows:
 
 print(f"在庫車両数: {len(vehicle_rows)} 件")
 
-# COMMAND ----------
-
-# DBTITLE 1,レコメンデーション生成プロンプト
-
-RECOMMENDATION_SYSTEM_PROMPT = """あなたは中古車販売会社のベテラン営業スタッフです。
-顧客データ・インサイト・在庫車両リストを元に、最適な車両3台を推薦し、
-各車両の推薦理由とトークスクリプトを生成してください。
-
-以下のJSON形式で回答してください（マークダウンや余分な文字を含めないこと）:
-[
-  {
-    "rank": 1,
-    "vehicle_key": "在庫のvehicle_keyをそのまま使う",
-    "vehicle_name": "車名（メーカー含む、例：トヨタ ハリアー）",
-    "match_score": 95,
-    "recommendation_reason": "この顧客にこの車を推薦する理由（3〜5文）",
-    "talk_script": "営業担当者が使えるトークスクリプト（顧客の名前を使い、具体的なエピソードを交えた2〜3文）",
-    "key_selling_points": ["セールスポイント1", "セールスポイント2", "セールスポイント3"]
-  },
-  { "rank": 2, ... },
-  { "rank": 3, ... }
-]"""
-
-
-def build_recommendation_prompt(customer_row, insights_row, inventory_list):
-    """顧客情報・インサイト・在庫リストからレコメンデーションプロンプトを構築"""
-    lines = [
-        f"顧客名: {customer_row['contact_name']}",
-        f"年齢: {customer_row['age']}歳 / 職業: {customer_row['occupation']}",
-        f"家族構成: {customer_row['family_detail']}",
-        f"現在の車: {customer_row['current_vehicle']}",
-        f"予算上限: {customer_row['budget']:,}円",
-        "",
-        "【AIインサイト】",
-        f"深層ニーズ: {insights_row['deep_needs']}",
-        f"購買意欲: {insights_row['purchase_urgency']}",
-        f"決め手: {insights_row['decision_key']}",
-        f"サマリ: {insights_row['summary']}",
-        "",
-        "【在庫車両リスト】（vehicle_keyと予算を参考に選択）"
-    ]
-    for v in inventory_list:
-        lines.append(
-            f"- vehicle_key={v['vehicle_key']}: {v['vehicle_name']} "
-            f"({v['body_type']}) "
-            f"価格: {v['price']:,}円"
-        )
-    return "\n".join(lines)
 
 # COMMAND ----------
 
-# DBTITLE 1,レコメンデーション生成（prebuilt 優先・未登録は LLM）
-# インサイト結果を辞書に変換（customer_id → インサイト行）
+# DBTITLE 1,レコメンデーション生成（全件 JSON/テンプレから。LLM 呼び出しなし）
+#
+# デモ主役 10 名は setup/gold_prebuilt_data.json の手作りレコメンドを使用。
+# それ以外の 117 名は「予算で適合する在庫車両から上位 3 台」を機械的に選ぶだけ。
+# ---------------------------------------------------------------------------
 insights_dict = {r["customer_id"]: r for r in insights_records}
 
 _prebuilt_recs = PREBUILT_DATA.get("recommendations", {})
 
 rec_records = []
 
+
+def _template_recommendations(c, inventory_list):
+    """予算内の在庫から、予算に近い順に top 3 を選ぶ決定論ロジック。"""
+    budget_max = c.get("budget_max") or c.get("budget") or 0
+    preferences = (c.get("preferences") or "").strip() or "バランスの取れた1台"
+    persona = c.get("persona_type") or ""
+    family = c.get("family_detail") or ""
+    name = c.get("contact_name") or "お客様"
+
+    # 予算内の車両だけを残し、予算に近い順（高い順）でソート
+    fit = [v for v in inventory_list if (v["price"] or 0) <= budget_max]
+    fit.sort(key=lambda v: -(v["price"] or 0))
+
+    # 予算ゼロ／マッチなしのフォールバック: 安い順に 3 台
+    if not fit:
+        fit = sorted(inventory_list, key=lambda v: (v["price"] or 0))[:3]
+
+    out = []
+    for rank, v in enumerate(fit[:3], start=1):
+        out.append({
+            "rank": rank,
+            "vehicle_key": v["vehicle_key"],
+            "vehicle_name": v["vehicle_name"],
+            "match_score": max(60, 90 - (rank - 1) * 7),
+            "recommendation_reason": (
+                f"{name}様の家族構成「{family}」と重視点「{preferences}」を踏まえ、"
+                f"予算 {budget_max // 10000} 万円の範囲で適合する {v['vehicle_name']}（{v['body_type']}）を推薦します。"
+                f"価格 {(v['price'] or 0) // 10000} 万円。"
+            ),
+            "talk_script": (
+                f"{name}様、{v['vehicle_name']} はご予算内で {persona} のお客様によく選ばれています。"
+                "一度ご試乗で乗り心地をご確認いただけますとイメージが湧きやすいと思います。"
+            ),
+            "key_selling_points": [
+                v["body_type"],
+                v["fuel_type"],
+                f"{(v['price'] or 0) // 10000}万円で予算内",
+            ],
+        })
+    return out
+
+
 for i, c in enumerate(customer_rows):
     cid = c["customer_id"]
-    print(f"  [{i+1}/{len(customer_rows)}] {c['contact_name']} ...", end=" ")
 
     insight = insights_dict.get(cid)
     if not insight:
-        print("SKIP (no insight)")
         continue
 
     if cid in _prebuilt_recs:
-        # ---- Prebuilt データを採用（LLM スキップ） ----
         recs = _prebuilt_recs[cid]
-        print(f"prebuilt ({len(recs)} recs)")
+        tag = "prebuilt"
     else:
-        # ---- LLM で生成 ----
-        user_prompt = build_recommendation_prompt(c, insight, vehicle_rows)
-        try:
-            raw = call_llm(RECOMMENDATION_SYSTEM_PROMPT, user_prompt)
-            recs = parse_json_response(raw)
-            if not isinstance(recs, list):
-                recs = []
-        except Exception as e:
-            print(f"ERROR: {str(e)[:80]}")
-            recs = []
-        print(f"llm done ({len(recs[:3])} recs)")
+        recs = _template_recommendations(c, vehicle_rows)
+        tag = "template"
+
+    if (i + 1) % 20 == 0 or i == 0 or i == len(customer_rows) - 1:
+        print(f"  [{i+1}/{len(customer_rows)}] {c['contact_name']} ({tag}, {len(recs)} recs)")
 
     for rec in recs[:3]:
         vkey = rec.get("vehicle_key", "")
