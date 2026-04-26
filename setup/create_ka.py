@@ -182,7 +182,9 @@ print("=" * 60)
 print(f"  Name         : {ka_name}")
 print(f"  ID           : {ka_id}")
 print(f"  Endpoint     : {endpoint_name}")
-print(f"  Volume path  : {config['sources'][0]['path']}")
+print(f"  Sources ({len(config['sources'])}):")
+for src in config['sources']:
+    print(f"    - {src['display_name']}: {src['path']}")
 print("=" * 60)
 
 dbutils.notebook.exit(
