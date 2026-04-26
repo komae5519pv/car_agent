@@ -24,7 +24,7 @@
 # MAGIC   <div style="color: #2E7D32;">
 # MAGIC     本ノートブックは <b>LLM API を呼びません</b>。デモ主役 10 名は <code>setup/gold_prebuilt_data.json</code> の手作り内容、<br>
 # MAGIC     それ以外の担当顧客は顧客プロフィールからの決定論テンプレで生成します。結果として build_gold は数秒〜1分で完了します。<br>
-# MAGIC     <i>LLM で全顧客を生成したい場合は別スクリプトを用意してください（本 notebook からは削除済み）。</i>
+# MAGIC     <i>LLM で推論させるコードも本 notebook 内にコメントアウトで残してあります（デモで見せられます）。</i>
 # MAGIC   </div>
 # MAGIC </div>
 # MAGIC
@@ -85,6 +85,12 @@
 
 # COMMAND ----------
 
+# ---- LLM で全顧客を生成したい場合は以下の %pip install を有効化してください ----
+# MAGIC %pip install openai mlflow -q
+# MAGIC dbutils.library.restartPython()
+
+# COMMAND ----------
+
 # MAGIC %run ./00_config
 
 # COMMAND ----------
@@ -97,6 +103,20 @@ from pyspark.sql.types import (
     StructType, StructField, StringType, IntegerType, FloatType,
     TimestampType, DateType, LongType, ArrayType
 )
+
+# ---- LLM 生成モード用の import（現在はテンプレモードのためコメントアウト） ----
+# from openai import OpenAI
+# import mlflow
+# from databricks.sdk import WorkspaceClient
+#
+# w = WorkspaceClient()
+# host  = w.config.host or os.environ.get("DATABRICKS_HOST", "")
+# token = (
+#     w.config.token
+#     or os.environ.get("DATABRICKS_TOKEN")
+#     or dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
+# )
+# client = OpenAI(api_key=token, base_url=f"{host}/serving-endpoints")
 
 # 00_config の変数を参照
 CATALOG = catalog_name
@@ -152,6 +172,37 @@ def add_comments(table: str, tbl_comment: str, col_comments: dict):
     for col, comment in col_comments.items():
         spark.sql(f"ALTER TABLE {CATALOG}.{SCHEMA}.{table} ALTER COLUMN `{col}` COMMENT '{comment}'")
     print(f"  コメント設定完了: {table}")
+
+
+# ============================================================================
+# LLM 呼び出し用ヘルパー（現在はテンプレモードのためコメントアウト）
+# ----------------------------------------------------------------------------
+# import re
+#
+# @mlflow.trace
+# def call_llm(system_prompt: str, user_prompt: str, model: str = None) -> str:
+#     """LLM を呼び出してテキスト応答を返す"""
+#     if model is None:
+#         model = LLM_MODEL
+#     response = client.chat.completions.create(
+#         model=model,
+#         messages=[
+#             {"role": "system", "content": system_prompt},
+#             {"role": "user", "content": user_prompt}
+#         ],
+#         max_tokens=2000,
+#         temperature=0.3
+#     )
+#     return response.choices[0].message.content
+#
+#
+# def parse_json_response(text: str):
+#     """LLM 応答から JSON を抽出してパースする"""
+#     cleaned = text.strip()
+#     cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+#     cleaned = re.sub(r"\s*```$", "", cleaned)
+#     return json.loads(cleaned.strip())
+# ============================================================================
 
 # COMMAND ----------
 
@@ -214,6 +265,94 @@ if CUSTOMER_LIMIT:
 
 print(f"対象顧客数: {len(customer_rows)} 件（担当: {SALES_REP_NAME}）")
 
+# ============================================================================
+# LLM 生成モード用データロード（現在はテンプレモードのためコメントアウト）
+# LLM プロンプトに商談履歴と Web 閲覧行動を渡すためのデータ準備処理です。
+# ----------------------------------------------------------------------------
+# # インタラクション履歴を取得（顧客ごとにグループ化用）
+# df_interactions = spark.sql(f"""
+#     SELECT customer_id, interaction_type, interaction_date, content, sales_rep_name
+#     FROM {CATALOG}.{SCHEMA}.sv_interactions
+#     ORDER BY customer_id, interaction_date
+# """)
+# interactions_all = df_interactions.collect()
+# interactions_by_customer = {}
+# for row in interactions_all:
+#     cid = row["customer_id"]
+#     interactions_by_customer.setdefault(cid, []).append(row)
+#
+# # Web 閲覧行動を取得（sf_opportunity_id でジョイン）
+# df_web = spark.sql(f"""
+#     SELECT *
+#     FROM {CATALOG}.{SCHEMA}.sv_web_browsing_behavior
+# """)
+# web_all = df_web.collect()
+# web_by_opp = {row["sf_opportunity_id"]: row for row in web_all}
+#
+# print(f"インタラクション: {len(interactions_all)} 件")
+# print(f"Web 閲覧行動: {len(web_all)} 件")
+# ============================================================================
+
+# COMMAND ----------
+
+# ============================================================================
+# LLM 生成モード用プロンプト（現在はテンプレモードのためコメントアウト）
+# ----------------------------------------------------------------------------
+# INSIGHT_SYSTEM_PROMPT = """あなたは中古車販売会社の顧客分析AIです。
+# 顧客の来店記録・LINEメッセージ・コールセンター通話・Web 閲覧履歴を分析し、
+# 顧客の深層ニーズと購買意欲を抽出してください。
+#
+# 【重要】各項目は簡潔に。長い文章は禁止。体言止め・短縮表現を使い、ぱっと見でわかる短さにすること。
+#
+# 以下のJSON形式で回答してください（マークダウンや余分な文字を含めないこと）:
+# {
+#   "deep_needs": ["短いフレーズ（20文字以内）", "例：義母含む5人の乗降性重視", "例：燃費・最新安全装備も気になる", "例：ミニバンとSUV両方検討中"],
+#   "purchase_signals": ["短いフレーズ（20文字以内）", "例：来店2回・LINE積極的"],
+#   "decision_key": "短い一文（30文字以内）例：義母の乗降性と安全装備が決め手",
+#   "purchase_urgency": "高/中/低",
+#   "urgency_reason": "短い根拠（40文字以内）例：来月の車検前に決めたい意向あり",
+#   "channel_insights": {
+#     "visit": "1文で簡潔に（40文字以内）",
+#     "line": "1文で簡潔に（40文字以内）",
+#     "callcenter": "1文で簡潔に（40文字以内)",
+#     "web": "1文で簡潔に（40文字以内)"
+#   },
+#   "key_quotes": ["印象的な発言1（25〜40文字の口語体）", "例：子供たちが快適に座れる車がいいんですよね", "例：義母の乗り降りが楽な車がいいなと思って"],
+#   "summary": "顧客の本音を一言で（20〜30文字）例：家族全員が快適に乗れる車が欲しい"
+# }"""
+#
+#
+# def build_insight_prompt(customer_row, interactions, web):
+#     """顧客情報・インタラクション・Web 閲覧行動からプロンプトを構築"""
+#     lines = [
+#         f"顧客名: {customer_row['contact_name']}",
+#         f"年齢: {customer_row['age']}歳",
+#         f"職業: {customer_row['occupation']}",
+#         f"家族構成: {customer_row['family_detail']}",
+#         f"現在の車: {customer_row['current_vehicle']} ({customer_row['current_mileage']:,}km)",
+#         f"予算上限: {customer_row['budget']:,}円",
+#         f"来店予定日: {customer_row['visit_scheduled_date']}",
+#         "",
+#         "【インタラクション履歴】"
+#     ]
+#     for row in interactions:
+#         lines.append(f"[{row['interaction_type']} / {row['interaction_date']}]")
+#         lines.append(row["content"][:500])
+#         lines.append("")
+#
+#     if web:
+#         lines += [
+#             "【Web 閲覧行動】",
+#             f"総セッション数: {web['session_count']}",
+#             f"総閲覧数: {web['view_count']}",
+#             f"検索キーワード: {web['search_keywords']}",
+#             f"閲覧車両: {web['viewed_vehicles']}",
+#             f"お気に入り登録数: {web['favorite_count']}件",
+#         ]
+#
+#     return "\n".join(lines)
+# ============================================================================
+
 # COMMAND ----------
 
 # DBTITLE 1,インサイト生成（全件 JSON/テンプレから。LLM 呼び出しなし）
@@ -269,8 +408,23 @@ for i, c in enumerate(customer_rows):
         result = _prebuilt_insights[cid]
         tag = "prebuilt"
     else:
+        # ---- テンプレモード（現在採用） ----
         result = _template_insight(c)
         tag = "template"
+        # ---- LLM モード（コメントアウト：有効化する場合は上の _template_insight を消す） ----
+        # interactions = interactions_by_customer.get(cid, [])
+        # web = web_by_opp.get(opp_id)
+        # user_prompt = build_insight_prompt(c, interactions, web)
+        # try:
+        #     raw = call_llm(INSIGHT_SYSTEM_PROMPT, user_prompt)
+        #     result = parse_json_response(raw)
+        #     tag = "llm"
+        # except Exception as e:
+        #     print(f"ERROR: {str(e)[:80]}")
+        #     result = {"deep_needs": [], "purchase_signals": [], "decision_key": "生成エラー",
+        #               "purchase_urgency": "中", "urgency_reason": "生成エラー",
+        #               "channel_insights": {"visit": "", "line": "", "callcenter": "", "web": ""},
+        #               "summary": "生成エラー"}
 
     if (i + 1) % 20 == 0 or i == 0 or i == len(customer_rows) - 1:
         print(f"  [{i+1}/{len(customer_rows)}] {c['contact_name']} ({tag})")
@@ -384,6 +538,57 @@ print(f"在庫車両数: {len(vehicle_rows)} 件")
 
 # COMMAND ----------
 
+# ============================================================================
+# LLM 生成モード用プロンプト（現在はテンプレモードのためコメントアウト）
+# ----------------------------------------------------------------------------
+# RECOMMENDATION_SYSTEM_PROMPT = """あなたは中古車販売会社のベテラン営業スタッフです。
+# 顧客データ・インサイト・在庫車両リストを元に、最適な車両3台を推薦し、
+# 各車両の推薦理由とトークスクリプトを生成してください。
+#
+# 以下のJSON形式で回答してください（マークダウンや余分な文字を含めないこと）:
+# [
+#   {
+#     "rank": 1,
+#     "vehicle_key": "在庫のvehicle_keyをそのまま使う",
+#     "vehicle_name": "車名（メーカー含む、例：トヨタ ハリアー）",
+#     "match_score": 95,
+#     "recommendation_reason": "この顧客にこの車を推薦する理由（3〜5文）",
+#     "talk_script": "営業担当者が使えるトークスクリプト（顧客の名前を使い、具体的なエピソードを交えた2〜3文）",
+#     "key_selling_points": ["セールスポイント1", "セールスポイント2", "セールスポイント3"]
+#   },
+#   { "rank": 2, ... },
+#   { "rank": 3, ... }
+# ]"""
+#
+#
+# def build_recommendation_prompt(customer_row, insights_row, inventory_list):
+#     """顧客情報・インサイト・在庫リストからレコメンデーションプロンプトを構築"""
+#     lines = [
+#         f"顧客名: {customer_row['contact_name']}",
+#         f"年齢: {customer_row['age']}歳 / 職業: {customer_row['occupation']}",
+#         f"家族構成: {customer_row['family_detail']}",
+#         f"現在の車: {customer_row['current_vehicle']}",
+#         f"予算上限: {customer_row['budget']:,}円",
+#         "",
+#         "【AIインサイト】",
+#         f"深層ニーズ: {insights_row['deep_needs']}",
+#         f"購買意欲: {insights_row['purchase_urgency']}",
+#         f"決め手: {insights_row['decision_key']}",
+#         f"サマリ: {insights_row['summary']}",
+#         "",
+#         "【在庫車両リスト】（vehicle_keyと予算を参考に選択）"
+#     ]
+#     for v in inventory_list:
+#         lines.append(
+#             f"- vehicle_key={v['vehicle_key']}: {v['vehicle_name']} "
+#             f"({v['body_type']}) "
+#             f"価格: {v['price']:,}円"
+#         )
+#     return "\n".join(lines)
+# ============================================================================
+
+# COMMAND ----------
+
 # DBTITLE 1,レコメンデーション生成（全件 JSON/テンプレから。LLM 呼び出しなし）
 #
 # デモ主役 10 名は setup/gold_prebuilt_data.json の手作りレコメンドを使用。
@@ -448,8 +653,20 @@ for i, c in enumerate(customer_rows):
         recs = _prebuilt_recs[cid]
         tag = "prebuilt"
     else:
+        # ---- テンプレモード（現在採用） ----
         recs = _template_recommendations(c, vehicle_rows)
         tag = "template"
+        # ---- LLM モード（コメントアウト：有効化する場合は上の _template_recommendations を消す） ----
+        # user_prompt = build_recommendation_prompt(c, insight, vehicle_rows)
+        # try:
+        #     raw = call_llm(RECOMMENDATION_SYSTEM_PROMPT, user_prompt)
+        #     recs = parse_json_response(raw)
+        #     if not isinstance(recs, list):
+        #         recs = []
+        #     tag = "llm"
+        # except Exception as e:
+        #     print(f"ERROR: {str(e)[:80]}")
+        #     recs = []
 
     if (i + 1) % 20 == 0 or i == 0 or i == len(customer_rows) - 1:
         print(f"  [{i+1}/{len(customer_rows)}] {c['contact_name']} ({tag}, {len(recs)} recs)")
