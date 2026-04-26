@@ -570,7 +570,10 @@ for rec in records:
     # 大前このみ担当の主要 10 名はハードコーディング会話を使用
     if is_detailed:
         conversation = DETAILED_LINE_CONVERSATIONS[opp_num - 1]
+        cumulative_minutes = 0  # 累積時間。メッセージ順序を必ず保つ
         for j, (sender, text) in enumerate(conversation):
+            # 返信は 5 分〜3 時間後（単調増加）
+            cumulative_minutes += random.randint(5, 180)
             m_counter += 1
             messages.append({
                 "message_id": f"MSG-{m_counter:06d}",
@@ -578,11 +581,13 @@ for rec in records:
                 "conversation_id": conv_id,
                 "sender": sender,
                 "message_text": text,
-                "sent_at": (base_time + timedelta(hours=j * random.randint(1, 24))).isoformat(),
+                "sent_at": (base_time + timedelta(minutes=cumulative_minutes)).isoformat(),
             })
     else:
         n_messages = random.randint(2, 4)
+        cumulative_minutes = 0
         for j in range(n_messages):
+            cumulative_minutes += random.randint(30, 24 * 60)  # 30分〜24時間
             m_counter += 1
             sender = "customer" if j % 2 == 0 else "staff"
             if sender == "customer":
@@ -596,7 +601,7 @@ for rec in records:
                 "conversation_id": conv_id,
                 "sender": sender,
                 "message_text": text,
-                "sent_at": (base_time + timedelta(hours=j * random.randint(1, 24))).isoformat(),
+                "sent_at": (base_time + timedelta(minutes=cumulative_minutes)).isoformat(),
             })
 
 lm_df = spark.createDataFrame(messages)
