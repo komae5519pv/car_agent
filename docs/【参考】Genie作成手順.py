@@ -89,6 +89,7 @@
 # MAGIC ```
 # MAGIC あなたは中古車販売の営業アシスタントです。
 # MAGIC 営業担当者からの質問に対し、顧客データ・在庫データ・商談履歴を参照して回答します。
+# MAGIC 営業担当者の「自分」は current_sales_rep_email() を呼んで取得したメールアドレスで sv_customers.sales_rep_email と照合してください。
 # MAGIC
 # MAGIC 主な対応範囲:
 # MAGIC - 顧客の購入履歴・嗜好・予算に基づく車両提案
@@ -155,6 +156,7 @@
 # MAGIC ```
 # MAGIC あなたは中古車販売の営業成績アナリストです。
 # MAGIC 営業担当者の売上実績・目標達成率・商談状況を分析し、回答します。
+# MAGIC 「自分の成績」などログインユーザーを指す問いは current_sales_rep_email() のメールアドレスを sv_sales_results.sales_rep_email と照合してください。
 # MAGIC
 # MAGIC 主な対応範囲:
 # MAGIC - 個人の売上実績と目標達成率の確認
@@ -249,6 +251,24 @@
 # MAGIC     <li>SUVカテゴリの月次販売トレンドを教えてください</li>
 # MAGIC     <li>試乗から見積への転換率が低い店舗はどこですか？</li>
 # MAGIC   </ul>
+# MAGIC </div>
+
+# COMMAND ----------
+
+# MAGIC %md-sandbox
+# MAGIC <hr style="border: 2px solid #F57C00; margin: 30px 0;">
+# MAGIC <div style="border-left: 4px solid #F57C00; background-color: #FFF3E0; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 10px 0;">
+# MAGIC   <h2 style="color: #F57C00; margin-top: 0;">🔧 UC 関数を Genie に登録（全 3 Genie 共通）</h2>
+# MAGIC   <p>Genie が「ログインユーザーのメールアドレス」を取得できるよう、UC 関数 <code>current_sales_rep_email()</code> を各 Genie の <b>Curated functions</b> に追加します。</p>
+# MAGIC   <p>関数の実体: パイプラインが <code>{catalog}.{schema}.current_sales_rep_email()</code> を自動作成しているので、関数を新規作成する必要はなく、Genie UI で登録するだけです。</p>
+# MAGIC   <ol>
+# MAGIC     <li>Genie Space を開く</li>
+# MAGIC     <li>右上「⚙️ Settings」→ <b>Instructions</b> タブ</li>
+# MAGIC     <li><b>「Curated functions」</b> セクション → <b>+ Add function</b></li>
+# MAGIC     <li>検索欄に <code>current_sales_rep_email</code> と入力 → 該当関数を選択 → <b>Save</b></li>
+# MAGIC     <li>同じ操作を Genie 2 / Genie 3 にも実施</li>
+# MAGIC   </ol>
+# MAGIC   <p style="color: #E65100; font-weight: bold;">※ 上記「General Instructions」本文にも current_sales_rep_email() の参照が含まれているため、関数登録と指示本文のコピーは両方必要です。</p>
 # MAGIC </div>
 
 # COMMAND ----------
