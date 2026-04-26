@@ -5,6 +5,7 @@
 | ファイル | 用途 |
 |---|---|
 | `DEMO_SCENARIO_COMPETITION.md` | デモ当日の画面遷移・入力プロンプト集 |
+| `MANUAL_GENIE_SETUP.md` | パイプライン実行後に Genie UI で手動設定する手順（一般的指示＋UC関数登録） |
 
 ## 手動セットアップ参考（UI 操作の手順書）
 

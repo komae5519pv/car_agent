@@ -192,6 +192,8 @@ Step 4-2 の `print_summary` タスクの出力（Job ログ or Job UI の最終
 
 Step 4-3 完了後、App URL をブラウザで開けばデモを開始できます。ダッシュボードは別タブで開いて管理者向けの可視化として使います。
 
+> ⚠️ **Genie の残作業（API 非対応のため手動）**: パイプラインは 3 つの Genie Space を作成し使用テーブルを紐付けますが、「一般的な指示」と UC 関数 `current_sales_rep_email()` の curated tool 登録は UI から手動で設定する必要があります。手順は [`docs/MANUAL_GENIE_SETUP.md`](docs/MANUAL_GENIE_SETUP.md) を参照。
+
 ---
 
 ## 🔍 セットアップで何が起きるか（詳細）
