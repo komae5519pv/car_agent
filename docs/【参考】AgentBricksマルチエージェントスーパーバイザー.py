@@ -18,10 +18,6 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./00_config
-
-# COMMAND ----------
-
 # MAGIC %md-sandbox
 # MAGIC ## 1. マルチエージェントスーパーバイザーを作る
 # MAGIC <div style="border-left: 4px solid #1976d2; background-color: #e3f2fd; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 10px 0;">
@@ -73,13 +69,6 @@
 # MAGIC     </tr>
 # MAGIC   </tbody>
 # MAGIC </table>
-
-# COMMAND ----------
-
-# 子エージェントの設定値確認
-print("=== 子エージェント設定値 ===")
-print(f"  Genie Space ID : {GENIE_VEHICLE_ASSISTANT_ID or '（未設定 → 05_Genie作成手順 で作成後に 00_config へ記入）'}")
-print(f"  KA Endpoint    : {KA_ENDPOINT_NAME or '（未設定 → 06_ナレッジアシスタント で作成後に 00_config へ記入）'}")
 
 # COMMAND ----------
 
@@ -170,10 +159,6 @@ print(f"  KA Endpoint    : {KA_ENDPOINT_NAME or '（未設定 → 06_ナレッ�
 
 # COMMAND ----------
 
-print(f"MAS_ENDPOINT_NAME = '{MAS_ENDPOINT_NAME}'")
-
-# COMMAND ----------
-
 # MAGIC %md-sandbox
 # MAGIC ## 4. サービスプリンシパルの権限設定
 # MAGIC <div style="border-left: 4px solid #F57C00; background-color: #FFF3E0; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 10px 0;">
@@ -207,16 +192,6 @@ print(f"MAS_ENDPOINT_NAME = '{MAS_ENDPOINT_NAME}'")
 
 # COMMAND ----------
 
-# サービスプリンシパルへの権限付与 SQL
-print("=== サービスプリンシパルへの権限付与 SQL ===")
-print("-- <サービスプリンシパル名> を実際の名前に置き換えて実行してください\n")
-print(f"GRANT USE CATALOG ON CATALOG {catalog_name} TO `66fd7c16-fe48-408e-8272-9d2b19513393`;")
-print(f"GRANT USE SCHEMA ON SCHEMA {catalog_name}.{schema_name} TO `66fd7c16-fe48-408e-8272-9d2b19513393`;")
-print(f"GRANT SELECT ON SCHEMA {catalog_name}.{schema_name} TO `66fd7c16-fe48-408e-8272-9d2b19513393`;")
-print(f"GRANT READ VOLUME ON VOLUME {catalog_name}.{schema_name}.{VOLUME_NAME} TO `66fd7c16-fe48-408e-8272-9d2b19513393`;")
-
-# COMMAND ----------
-
 # MAGIC %md-sandbox
 # MAGIC ## 5. Playground テストチェックリスト
 # MAGIC <div style="border-left: 4px solid #388E3C; background-color: #E8F5E9; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 10px 0;">
@@ -238,16 +213,6 @@ print(f"GRANT READ VOLUME ON VOLUME {catalog_name}.{schema_name}.{VOLUME_NAME} T
 # MAGIC     <tr style="background: #FFFFFF;"><td style="padding: 8px 16px;">日本語出力</td><td style="padding: 8px 16px;">回答が日本語で出力されている</td></tr>
 # MAGIC   </tbody>
 # MAGIC </table>
-
-# COMMAND ----------
-
-# 設定値の最終確認
-print("=== 最終設定確認 ===")
-print(f"  Catalog                      : {catalog_name}")
-print(f"  Schema                       : {schema_name}")
-print(f"  GENIE_VEHICLE_ASSISTANT_ID   : {GENIE_VEHICLE_ASSISTANT_ID or '（未設定）'}")
-print(f"  KA_ENDPOINT_NAME             : {KA_ENDPOINT_NAME or '（未設定）'}")
-print(f"  MAS_ENDPOINT_NAME            : {MAS_ENDPOINT_NAME or '（未設定）'}")
 
 # COMMAND ----------
 

@@ -37,10 +37,6 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./00_config
-
-# COMMAND ----------
-
 # MAGIC %md-sandbox
 # MAGIC ## 1. ナレッジアシスタントを作る
 # MAGIC <div style="border-left: 4px solid #1976d2; background-color: #e3f2fd; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 10px 0;">
@@ -102,20 +98,6 @@
 # MAGIC     </tr>
 # MAGIC   </tbody>
 # MAGIC </table>
-
-# COMMAND ----------
-
-# ナレッジフォルダの確認
-knowledge_base_path = f"/Volumes/{catalog_name}/{schema_name}/{KNOWLEDGE_VOLUME_NAME}"
-for folder in ["catalogs", "sales", "finance"]:
-    path = f"{knowledge_base_path}/{folder}"
-    try:
-        files = dbutils.fs.ls(path)
-        print(f"  {folder}/: {len(files)} ファイル")
-        for f in files:
-            print(f"    - {f.name} ({f.size:,} bytes)")
-    except Exception as e:
-        print(f"  {folder}/: フォルダが見つかりません - {path}")
 
 # COMMAND ----------
 
@@ -218,10 +200,6 @@ for folder in ["catalogs", "sales", "finance"]:
 # MAGIC   マルチエージェントスーパーバイザー（07）の設定で使用します。<br/><br/>
 # MAGIC   Agent Bricks → ナレッジアシスタント → <code>car-knowledge-bot</code> → <b>「デプロイ」タブ</b> → エンドポイント名を確認し、<code>00_config</code> の <code>KA_ENDPOINT_NAME</code> に設定してください。
 # MAGIC </div>
-
-# COMMAND ----------
-
-print(f"KA_ENDPOINT_NAME = '{KA_ENDPOINT_NAME}'")
 
 # COMMAND ----------
 

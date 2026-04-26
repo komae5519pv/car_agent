@@ -13,10 +13,6 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./00_config
-
-# COMMAND ----------
-
 # MAGIC %md-sandbox
 # MAGIC ## 📋 概要
 # MAGIC <div style="border-left: 4px solid #1976d2; background-color: #e3f2fd; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 10px 0;">
@@ -273,25 +269,6 @@
 # MAGIC   <h3 style="color: #1976d2; margin-top: 0;">データ確認</h3>
 # MAGIC   <p>Genie スペースに追加するテーブルのデータを確認します。</p>
 # MAGIC </div>
-
-# COMMAND ----------
-
-# Genie 1 用テーブル確認
-print("=== Genie 1: 車両営業アシスタント ===")
-for t in ["sv_customers", "sv_vehicle_inventory", "sv_interactions", "gd_customer_insights", "gd_recommendations"]:
-    print(f"  {t}: {spark.table(t).count():,} 件")
-
-# COMMAND ----------
-
-# Genie 2 用テーブル確認
-print("=== Genie 2: 営業マイページ アシスタント ===")
-print(f"  sv_sales_results: {spark.table('sv_sales_results').count():,} 件")
-
-# COMMAND ----------
-
-# Genie 3 用テーブル確認
-print("=== Genie 3: 営業データ Genie ===")
-print(f"  gd_store_daily_activity: {spark.table('gd_store_daily_activity').count():,} 件")
 
 # COMMAND ----------
 
