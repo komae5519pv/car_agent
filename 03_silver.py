@@ -183,15 +183,35 @@ df_visit = (
         F.col("transcript_text").alias("content"), F.col("duration_minutes").cast("int"),
     )
 )
+#  LINE メッセージは conversation_id でグループ化して「1 会話 = 1 interaction」にする。
+#  時系列順に "sender: message" を改行連結。これをしないと UI 側で 1 メッセージ = 1 カードに
+#  分割表示されて見辛い。
 df_line = (
     spark.table("bz_line_messages")
     .join(df_opp_to_cust, "sf_opportunity_id", "left")
+    .withColumn("msg_line", F.concat(F.col("sender"), F.lit(": "), F.col("message_text")))
+    .groupBy("conversation_id", "sf_opportunity_id", "customer_id")
+    .agg(
+        F.min("sent_at").cast("date").alias("interaction_date"),
+        F.expr(
+            "array_join("
+            "  transform("
+            "    array_sort(collect_list(struct(sent_at, msg_line))),"
+            "    s -> s.msg_line"
+            "  ),"
+            "  '\n'"
+            ")"
+        ).alias("content"),
+    )
     .select(
-        F.col("message_id").alias("interaction_id"), F.col("sf_opportunity_id"),
+        F.col("conversation_id").alias("interaction_id"),
+        F.col("sf_opportunity_id"),
         F.col("customer_id"),
-        F.lit("LINE").alias("interaction_type"), F.col("sent_at").cast("date").alias("interaction_date"),
-        F.lit(None).cast("string").alias("store_name"), F.lit(None).cast("string").alias("sales_rep_name"),
-        F.concat(F.col("sender"), F.lit(": "), F.col("message_text")).alias("content"),
+        F.lit("LINE").alias("interaction_type"),
+        F.col("interaction_date"),
+        F.lit(None).cast("string").alias("store_name"),
+        F.lit(None).cast("string").alias("sales_rep_name"),
+        F.col("content"),
         F.lit(None).cast("int").alias("duration_minutes"),
     )
 )
