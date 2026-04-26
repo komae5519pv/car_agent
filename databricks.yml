@@ -27,6 +27,17 @@ include:
 # variables: 全設定をここに集約。SA が --var で上書き可能。
 # ====================================================================
 variables:
+  # ---- 環境識別 ----
+  # env_suffix: ワークスペース系リソース名（App/KA/MAS/Genie/Dashboard/Job/root_path）
+  # の末尾に付く接尾辞。
+  #   - 本番デプロイ            : "" （デフォルト、無印）
+  #   - 並行テスト環境          : "-test"
+  #   - 他 SA が同一 WS に同居   : "-<自分の名前>"
+  # UC 側（catalog / schema）は別物なので、必要に応じて別途 --var で上書きしてください。
+  env_suffix:
+    description: "ワークスペース系リソース名の接尾辞（例: -test）。本番は空のまま。"
+    default: ""
+
   # ---- Unity Catalog / コンピュート ----
   catalog:
     description: "Unity Catalog 名"
@@ -39,30 +50,32 @@ variables:
     default: "348478745ad64b30"   # fevm-konomi-demo の Serverless Starter Warehouse
 
   # ---- リソース名（SA が変更可能） ----
+  # すべて末尾に ${var.env_suffix} を付けることで、--var env_suffix=-test で
+  # 並行テスト環境を 1 コマンドで作れる（本番と衝突しない）。
   app_name:
     description: "Databricks App 名 (URL slug)"
-    default: car-agent
+    default: "car-agent${var.env_suffix}"
   job_display_name:
     description: "セットアップ Job の表示名"
-    default: "[car-agent] 初回セットアップ"
+    default: "[car-agent${var.env_suffix}] 初回セットアップ"
   ka_name:
     description: "Knowledge Assistant 名"
-    default: car-agent-knowledge
+    default: "car-agent-knowledge${var.env_suffix}"
   mas_name:
     description: "Multi-Agent Supervisor 名"
-    default: car-agent-supervisor
+    default: "car-agent-supervisor${var.env_suffix}"
   genie_vehicle_name:
     description: "車両営業アシスタント Genie Space 名"
-    default: "[car-agent] 車両営業アシスタント"
+    default: "[car-agent${var.env_suffix}] 車両営業アシスタント"
   genie_mypage_name:
     description: "営業マイページ Genie Space 名"
-    default: "[car-agent] 営業マイページ"
+    default: "[car-agent${var.env_suffix}] 営業マイページ"
   genie_dashboard_name:
     description: "営業データ Genie Space 名"
-    default: "[car-agent] 営業データ"
+    default: "[car-agent${var.env_suffix}] 営業データ"
   dashboard_name:
     description: "AI/BI ダッシュボード名"
-    default: "[car-agent] 車両販売ダッシュボード"
+    default: "[car-agent${var.env_suffix}] 車両販売ダッシュボード"
 
   # ---- デモ固有 ----
   sales_rep_name:
@@ -88,7 +101,8 @@ targets:
     default: true
     workspace:
       host: https://fevm-konomi-demo.cloud.databricks.com
-      root_path: /Workspace/Users/konomi.omae@databricks.com/04_Event/20260427_jp_fe_demo_competition
+      # env_suffix が効くので、並行テスト時は別ディレクトリ(...compet ition-test)にデプロイされる
+      root_path: /Workspace/Users/konomi.omae@databricks.com/04_Event/20260427_jp_fe_demo_competition${var.env_suffix}
       # ソースをルート直下に配置（files/ サブディレクトリをスキップ）
       file_path:     ${workspace.root_path}
       artifact_path: ${workspace.root_path}/.bundle/artifacts
