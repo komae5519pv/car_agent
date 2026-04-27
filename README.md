@@ -23,10 +23,16 @@ databricks bundle run car_agent                    --profile <プロファイル
 # パイプラインだけ再実行したければ:
 databricks bundle run setup_demo --only build_gold --profile <プロファイル>   # 特定タスクだけ
 
-# === 全部消す（UC スキーマも含めて真っサラに）===
+# === 既定 teardown: UC / Dashboard / MAS / KA / Genies を削除（App/Job は残す）===
 ./scripts/teardown.sh --profile <プロファイル> --drop-schema --yes
+# ↑ App を保持するので OAuth session 切れ（画面が白いまま）を起こしません。
+#   次の 'bundle deploy' で App/Job は in-place 更新されます。
 
-# === 消して作り直す（ワンセット）===
+# === 完全 teardown: App/Job も消す（SA 間配布前の検証用）===
+./scripts/teardown.sh --profile <プロファイル> --drop-schema --destroy-app --yes
+# ↑ App SP の OAuth integration も消えるので、既存ブラウザ session は無効化される点注意。
+
+# === 消して作り直す（ワンセット、推奨フロー）===
 ./scripts/teardown.sh --profile <プロファイル> --drop-schema --yes \
   && databricks bundle deploy       --profile <プロファイル> \
   && databricks bundle run setup_demo --profile <プロファイル> \
@@ -295,14 +301,19 @@ SELECT key, value FROM <catalog>.<schema>._app_config ORDER BY key;
 
 ### teardown スクリプト（推奨・ワンコマンド）
 
-付属の `scripts/teardown.sh` が **DAB 管理リソース（Job / App / workspace files）＋ DAB 管理外のリソース（Dashboard / MAS / KA / Genie ×3）＋ UC スキーマ** まですべてを一括削除します。
+付属の `scripts/teardown.sh` が **DAB 管理外リソース（Dashboard / MAS / KA / Genie ×3）＋（オプション）UC スキーマ** を削除します。
+
+**既定では App / Job は残します**。これは App 消去 → 再作成で OAuth integration が再発行され、ブラウザ cookie が stale 化して session 切れ（画面真っ白）を起こすため。次の `bundle deploy` で App/Job は in-place 更新されます。
 
 ```bash
-# 【最もよく使う】全削除 (UC スキーマも消す、確認スキップ)
+# 【既定】Dashboard/MAS/KA/Genies + UC スキーマ 削除（App/Job は残す、確認スキップ）
 ./scripts/teardown.sh --profile <プロファイル> --drop-schema --yes
 
-# UC スキーマは残して、Job/App/Genie/KA/MAS/Dashboard だけ削除
+# UC スキーマも残して、Agent 系だけ削除
 ./scripts/teardown.sh --profile <プロファイル> --yes
+
+# 【完全消去】App/Job まで含めて真っサラに（SA 間配布前の検証用）
+./scripts/teardown.sh --profile <プロファイル> --drop-schema --destroy-app --yes
 ```
 
 <details><summary>オプション詳細</summary>

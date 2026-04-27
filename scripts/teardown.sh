@@ -8,17 +8,24 @@
 #
 # 削除順序 (依存関係に従う):
 #   1. _app_config からリソース ID を取得 (カタログ/スキーマは引数指定)
-#   2. AI/BI Dashboard        (Lakeview API: /api/2.0/lakeview/dashboards/{id})
+#   2. AI/BI Dashboard         (Lakeview API: /api/2.0/lakeview/dashboards/{id})
 #   3. Multi-Agent Supervisor  (Agent Bricks tile: /api/2.0/tiles/{id})
 #   4. Knowledge Assistant     (Agent Bricks tile: /api/2.0/tiles/{id})
 #   5. Genie Spaces ×3         (Genie API: /api/2.0/genie/spaces/{id})
-#   6. DAB 管理リソース        (Job / App / workspace files) via bundle destroy
+#   6. [optional] DAB 管理     (--destroy-app 指定時のみ、bundle destroy で
+#                              Job / App / workspace files 削除)
 #   7. [optional] UC Schema    (--drop-schema 指定時のみ)
 #
+# 既定では DAB 管理 (Job / App / workspace files) は削除しません。
+# 理由: App を消すと OAuth integration が再発行され、ブラウザ cookie が
+#      stale 化して次回アクセス時に session 切れになるため (デモ運用で頻発)。
+# 完全消去したい場合のみ --destroy-app を付けてください。
+#
 # 使い方:
-#   ./scripts/teardown.sh --profile <profile>                             # UC 以外を全削除
-#   ./scripts/teardown.sh --profile <profile> --drop-schema               # UC Schema も削除
-#   ./scripts/teardown.sh --profile <profile> --drop-schema --yes         # 確認なしで実行
+#   ./scripts/teardown.sh --profile <profile>                                  # Dashboard/MAS/KA/Genies のみ削除（推奨）
+#   ./scripts/teardown.sh --profile <profile> --drop-schema                    # UC Schema も削除
+#   ./scripts/teardown.sh --profile <profile> --drop-schema --destroy-app      # App/Job 含めて完全消去
+#   ./scripts/teardown.sh --profile <profile> --drop-schema --destroy-app --yes # 確認なしで完全消去
 #
 # 依存: databricks CLI v0.230+, python3 (JSON パース用)
 # =====================================================================
@@ -38,6 +45,7 @@ GENIE_DASHBOARD_NAME="[car-agent] 営業データ"
 DASHBOARD_NAME="[car-agent] 車両販売ダッシュボード"
 YES="false"
 DROP_SCHEMA="false"
+DESTROY_APP="false"
 
 usage() {
   cat <<EOF
@@ -56,6 +64,9 @@ Options:
   --dashboard-name <name>  AI/BI ダッシュボード名 (default: "$DASHBOARD_NAME")
   --warehouse-id <id>      _app_config 読み取り用 warehouse ID (default: $WAREHOUSE_ID)
   --drop-schema            UC schema も DROP CASCADE で削除
+  --destroy-app            App/Job/workspace files も削除 (bundle destroy 実行)
+                           既定では App/Job は残して次回 bundle deploy で更新扱いにする
+                           (App SP の OAuth integration 維持のため、ブラウザ session 切れ防止)
   --yes, -y                確認プロンプトをスキップ
   -h, --help               このヘルプ表示
 EOF
@@ -75,6 +86,7 @@ while [[ $# -gt 0 ]]; do
     --dashboard-name)         DASHBOARD_NAME="$2"; shift 2;;
     --warehouse-id)           WAREHOUSE_ID="$2"; shift 2;;
     --drop-schema)            DROP_SCHEMA="true"; shift;;
+    --destroy-app)            DESTROY_APP="true"; shift;;
     --yes|-y)                 YES="true"; shift;;
     -h|--help)                usage; exit 0;;
     *) echo "Unknown arg: $1"; usage; exit 1;;
@@ -100,6 +112,7 @@ echo "  KA name      : $KA_NAME"
 echo "  MAS name     : $MAS_NAME"
 echo "  Warehouse    : $WAREHOUSE_ID"
 echo "  Drop schema  : $DROP_SCHEMA"
+echo "  Destroy app  : $DESTROY_APP"
 echo "======================================================================"
 
 # ヘルパ: Python で JSON payload を組み立てて `databricks api post` に渡す
@@ -236,7 +249,11 @@ if [[ "$YES" != "true" ]]; then
   echo "----------------------------------------------------------------------"
   echo "  これから削除します:"
   echo "    - AI/BI Dashboard / MAS tile / KA tile / Genie Spaces ×3"
-  echo "    - DAB 管理: Job / App / workspace files (bundle destroy -t $TARGET)"
+  if [[ "$DESTROY_APP" == "true" ]]; then
+    echo "    - DAB 管理: Job / App / workspace files (bundle destroy -t $TARGET)"
+  else
+    echo "    - (App / Job は維持。次の bundle deploy で上書き更新される)"
+  fi
   if [[ "$DROP_SCHEMA" == "true" ]]; then
     echo "    - UC Schema: $CATALOG.$SCHEMA (DROP ... CASCADE)"
   fi
@@ -296,12 +313,20 @@ for gkey in CFG_GENIE_VEHICLE_ID CFG_GENIE_MYPAGE_ID CFG_GENIE_DASHBOARD_ID; do
 done
 
 # =====================================================================
-# 7. DAB リソース削除 (Job + App + workspace files)
+# 7. DAB リソース削除 (Job + App + workspace files) — opt-in
 # =====================================================================
-echo ""
-echo "=== DAB 管理リソース削除 (bundle destroy -t $TARGET) ==="
-echo "  cmd: databricks bundle destroy -t $TARGET --profile $PROFILE --auto-approve"
-databricks bundle destroy -t "$TARGET" --profile "$PROFILE" --auto-approve || echo "  ⚠️  bundle destroy failed"
+if [[ "$DESTROY_APP" == "true" ]]; then
+  echo ""
+  echo "=== DAB 管理リソース削除 (bundle destroy -t $TARGET) ==="
+  echo "  cmd: databricks bundle destroy -t $TARGET --profile $PROFILE --auto-approve"
+  databricks bundle destroy -t "$TARGET" --profile "$PROFILE" --auto-approve || echo "  ⚠️  bundle destroy failed"
+else
+  echo ""
+  echo "=== DAB 管理リソース (App / Job / workspace files) はスキップ ==="
+  echo "  理由: App SP の OAuth integration 維持のため (ブラウザ session 切れ防止)。"
+  echo "        次の 'databricks bundle deploy' で App/Job は in-place 更新されます。"
+  echo "        完全消去したい場合は --destroy-app を追加して再実行してください。"
+fi
 
 # =====================================================================
 # 8. UC Schema 削除 (optional)
