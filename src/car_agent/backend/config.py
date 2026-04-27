@@ -113,10 +113,24 @@ def is_databricks_app() -> bool:
 
 
 def get_databricks_host() -> str:
-    """Get Databricks host URL with https:// prefix."""
-    settings_host = os.environ.get("DATABRICKS_HOST", "")
-    # Fallback: allow _load_from_uc (which calls us) before Settings is fully loaded
-    host = settings_host
+    """Get Databricks host URL with https:// prefix.
+
+    Resolution order:
+      1. DATABRICKS_HOST env var (explicit)
+      2. Databricks Apps runtime (WorkspaceClient.config.host)
+
+    Without this fallback, App would think Databricks is not configured
+    and silently switch to hardcoded demo data via database.py's demo mode.
+    """
+    host = os.environ.get("DATABRICKS_HOST", "")
+
+    if not host and is_databricks_app():
+        try:
+            from databricks.sdk import WorkspaceClient
+            w = WorkspaceClient()
+            host = w.config.host or ""
+        except Exception as e:
+            print(f"[config] WARN: could not resolve host from WorkspaceClient: {e}")
 
     if host and not host.startswith("http"):
         host = f"https://{host}"
