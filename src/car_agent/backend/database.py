@@ -29,12 +29,8 @@ class DatabasePool:
         settings = get_settings()
         host = get_databricks_host()
 
-        # Diagnostic — logs reveal which part failed when demo mode kicks in
-        is_apps = bool(os.environ.get("DATABRICKS_APP_NAME"))
-        print(f"[DB init] host={host!r}, warehouse_id={settings.databricks_warehouse_id!r}, is_apps_runtime={is_apps}")
-
         if not host or not settings.databricks_warehouse_id:
-            print(f"[DB init] ❌ config missing -> demo mode (host_empty={not host}, warehouse_empty={not settings.databricks_warehouse_id})")
+            print("Databricks not configured - using demo mode")
             self._demo_mode = True
             self._initialized = True
             return
@@ -42,7 +38,7 @@ class DatabasePool:
         try:
             token = get_oauth_token()
             if not token:
-                print("[DB init] ❌ no OAuth token -> demo mode")
+                print("No OAuth token available - using demo mode")
                 self._demo_mode = True
                 self._initialized = True
                 return
@@ -56,9 +52,9 @@ class DatabasePool:
                 access_token=token,
             )
             self._initialized = True
-            print(f"[DB init] ✓ connected to {server_hostname}")
+            print("Databricks SQL connection established")
         except Exception as e:
-            print(f"[DB init] ❌ connection failed: {type(e).__name__}: {e} -> demo mode")
+            print(f"Databricks connection failed: {e} - using demo mode")
             self._demo_mode = True
             self._initialized = True
 
