@@ -168,18 +168,28 @@ if _interact_raw is None:
     raise RuntimeError("setup/demo_interactions_data.json が見つかりません。リポジトリ同期を確認してください。")
 
 _interact_by_opp = _interact_raw["interactions_by_opp"]
+
+# SALES_REP_NAME の苗字を抽出して staff 自己紹介のプレースホルダを置換
+# 例: SALES_REP_NAME = "大前 このみ" → STAFF_SURNAME = "大前"
+#     SALES_REP_NAME = "加藤" (苗字のみ) → STAFF_SURNAME = "加藤"
+# LINE メッセージ内の "{STAFF_SURNAME}です" が置き換わる
+STAFF_SURNAME = SALES_REP_NAME.strip().split()[0] if SALES_REP_NAME else "担当"
+print(f"  Staff surname (for LINE self-intro): {STAFF_SURNAME}")
+
 DETAILED_TRANSCRIPTS = [
-    _interact_by_opp[f"OPP-{i+1:04d}"]["transcript_text"] for i in range(10)
+    _interact_by_opp[f"OPP-{i+1:04d}"]["transcript_text"].replace("{STAFF_SURNAME}", STAFF_SURNAME)
+    for i in range(10)
 ]
 DETAILED_LINE_CONVERSATIONS = [
-    [(m["sender"], m["text"]) for m in _interact_by_opp[f"OPP-{i+1:04d}"]["line_messages"]]
+    [(m["sender"], m["text"].replace("{STAFF_SURNAME}", STAFF_SURNAME))
+     for m in _interact_by_opp[f"OPP-{i+1:04d}"]["line_messages"]]
     for i in range(10)
 ]
 DETAILED_CALLCENTER_LOGS = [
     {
         "reason": _interact_by_opp[f"OPP-{i+1:04d}"]["callcenter_log"]["reason"],
         "duration": _interact_by_opp[f"OPP-{i+1:04d}"]["callcenter_log"]["duration_seconds"],
-        "text": _interact_by_opp[f"OPP-{i+1:04d}"]["callcenter_log"]["transcript_text"],
+        "text": _interact_by_opp[f"OPP-{i+1:04d}"]["callcenter_log"]["transcript_text"].replace("{STAFF_SURNAME}", STAFF_SURNAME),
     }
     for i in range(10)
 ]

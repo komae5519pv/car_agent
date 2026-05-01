@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "description": "大前このみ担当の主要 10 名（OPP-0001 〜 OPP-0010）の商談録音文字起こし・LINE会話・コールセンターログをハードコーディングしたデータ。01_setup_demo_data.py が読み込み、該当 opp_id の Volume ファイルに書き込む。",
-    "sales_rep": "大前 このみ",
-    "generated_by": "hand-authored for demo"
+    "description": "デモ主役の営業担当の主要 10 名（OPP-0001 〜 OPP-0010）の商談録音文字起こし・LINE会話・コールセンターログをハードコーディングしたデータ。01_setup_demo_data.py が読み込み、該当 opp_id の Volume ファイルに書き込む。",
+    "generated_by": "hand-authored for demo",
+    "note": "staff の自己紹介 \"{STAFF_SURNAME}です\" は 01_setup_demo_data.py が SALES_REP_NAME の苗字部分で置換します"
   },
   "interactions_by_opp": {
     "OPP-0001": {
@@ -15,7 +15,7 @@
         },
         {
           "sender": "staff",
-          "text": "山田様こんにちは！大前です。ご家族でご覧いただけたようで嬉しいです。義母様にも気に入っていただけそうで何よりです。"
+          "text": "山田様こんにちは！{STAFF_SURNAME}です。ご家族でご覧いただけたようで嬉しいです。義母様にも気に入っていただけそうで何よりです。"
         },
         {
           "sender": "customer",
@@ -187,7 +187,7 @@
         },
         {
           "sender": "staff",
-          "text": "木村様こんにちは！大前です。ご質問ありがとうございます。一番の違いは3列目の使いやすさです。フリードは3列目が少し広く、長距離でも大人が座れます。"
+          "text": "木村様こんにちは！{STAFF_SURNAME}です。ご質問ありがとうございます。一番の違いは3列目の使いやすさです。フリードは3列目が少し広く、長距離でも大人が座れます。"
         },
         {
           "sender": "customer",
@@ -402,7 +402,7 @@
         },
         {
           "sender": "staff",
-          "text": "藤田様こんにちは！大前です。藤田様のご家族にはフリードをおすすめします。理由はHonda SENSINGの先進性と、2列目のゆとりです。"
+          "text": "藤田様こんにちは！{STAFF_SURNAME}です。藤田様のご家族にはフリードをおすすめします。理由はHonda SENSINGの先進性と、2列目のゆとりです。"
         },
         {
           "sender": "customer",
