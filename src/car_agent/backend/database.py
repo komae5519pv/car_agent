@@ -36,25 +36,38 @@ class DatabasePool:
             return
 
         try:
-            token = get_oauth_token()
-            if not token:
-                print("No OAuth token available - using demo mode")
-                self._demo_mode = True
-                self._initialized = True
-                return
-
             # Remove https:// prefix for SQL connector
             server_hostname = host.replace("https://", "").replace("http://", "")
 
-            self._connection = sql.connect(
-                server_hostname=server_hostname,
-                http_path=f"/sql/1.0/warehouses/{settings.databricks_warehouse_id}",
-                access_token=token,
-            )
+            # Apps runtime では WorkspaceClient の credentials_provider を使う
+            # (access_token=静的文字列だと token 期限切れで "Error during request to server" になる)
+            from car_agent.backend.config import is_databricks_app
+            if is_databricks_app():
+                from databricks.sdk import WorkspaceClient
+                cfg = WorkspaceClient().config
+                self._connection = sql.connect(
+                    server_hostname=server_hostname,
+                    http_path=f"/sql/1.0/warehouses/{settings.databricks_warehouse_id}",
+                    credentials_provider=lambda: cfg.authenticate,
+                )
+                print("Databricks SQL connection established (credentials_provider mode)")
+            else:
+                # ローカル実行時は PAT / OAuth token
+                token = get_oauth_token()
+                if not token:
+                    print("No OAuth token available - using demo mode")
+                    self._demo_mode = True
+                    self._initialized = True
+                    return
+                self._connection = sql.connect(
+                    server_hostname=server_hostname,
+                    http_path=f"/sql/1.0/warehouses/{settings.databricks_warehouse_id}",
+                    access_token=token,
+                )
+                print("Databricks SQL connection established (access_token mode)")
             self._initialized = True
-            print("Databricks SQL connection established")
         except Exception as e:
-            print(f"Databricks connection failed: {e} - using demo mode")
+            print(f"Databricks connection failed: {type(e).__name__}: {e} - using demo mode")
             self._demo_mode = True
             self._initialized = True
 
