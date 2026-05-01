@@ -89,23 +89,28 @@ variables:
 
 targets:
   # ------------------------------------------------------------------
-  # dev: fevm-konomi-demo ワークスペースで開発。
-  #   databricks bundle deploy --profile fe-vm-konomi-demo
+  # dev: 個人ワークスペースで開発（全 SA 共通で使う default target）
+  #   databricks bundle deploy --profile <your-profile>
+  #
+  # host / user は --profile で指定した workspace から自動解決されるので、
+  # この YAML を書き換える必要はありません。
+  # root_path はログインユーザーのホームに car-agent-demo/ として作成され、
+  # 他ユーザーと衝突しません。
   # ------------------------------------------------------------------
   dev:
     mode: development
     default: true
     workspace:
-      host: https://fevm-konomi-demo.cloud.databricks.com
-      root_path: /Workspace/Users/konomi.omae@databricks.com/04_Event/20260427_jp_fe_demo_competition
+      # ログインユーザーのホームに置く（他の SA と衝突しない）
+      root_path: /Workspace/Users/${workspace.current_user.userName}/car-agent-demo
       # ソースをルート直下に配置（files/ サブディレクトリをスキップ）
       file_path:     ${workspace.root_path}
       artifact_path: ${workspace.root_path}/.bundle/artifacts
       state_path:    ${workspace.root_path}/.bundle/state
 
   # ------------------------------------------------------------------
-  # prod: 汎用配布用。配布先の SA が --var で上書きして使う。
-  #   databricks bundle deploy -t prod --var catalog=<your_catalog>
+  # prod: チーム共有デプロイ向け（複数メンバーで触る想定）
+  #   databricks bundle deploy -t prod --profile <your-profile>
   # ------------------------------------------------------------------
   prod:
     mode: production

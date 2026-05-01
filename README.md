@@ -120,18 +120,22 @@ databricks auth login --host https://<自分のワークスペース>.cloud.data
 
 ブラウザが開いてログインすると `~/.databrickscfg` に保存されます。プロファイル名（例: `my-workspace`）を控えておいてください。
 
-### Step 3.（任意）設定カスタマイズ
+### Step 3. 設定カスタマイズ
 
-`databricks.yml` の `variables:` セクションを開き、必要なら `default` を書き換え：
+`databricks.yml` の `variables:` セクションを開いて **以下 3 つ（または 5 つ）のデフォルト値を自分用に書き換え**：
 
 ```yaml
 variables:
-  # ---- UC / 環境 ----
+  # ---- 必須: UC / warehouse（自分のワークスペースの値に）----
   catalog:              { default: konomi_demo_catalog }      # ← 自分のカタログに変更
-  schema:               { default: car_agent }                # ← 好きなスキーマ名
   warehouse_id:         { default: "348478745ad64b30" }       # ← 自分の warehouse ID
 
-  # ---- リソース名（他のリソースとの衝突を避けるために変更推奨） ----
+  # ---- 推奨: デモ担当者（自分の名前とメール）----
+  sales_rep_name:       { default: "大前 このみ" }            # ← 自分の名前（苗字でLINE自己紹介に使われる）
+  sales_rep_email:      { default: "konomi.omae@databricks.com" }  # ← 自分のメール
+
+  # ---- 変更不要（気にしないなら触らない）----
+  schema:               { default: car_agent }
   app_name:             { default: car-agent }
   job_display_name:     { default: "[car-agent] 初回セットアップ" }
   ka_name:              { default: car-agent-knowledge }
@@ -140,15 +144,11 @@ variables:
   genie_mypage_name:    { default: "[car-agent] 営業マイページ" }
   genie_dashboard_name: { default: "[car-agent] 営業データ" }
   dashboard_name:       { default: "[car-agent] 車両販売ダッシュボード" }
-
-  # ---- デモ担当者 ----
-  sales_rep_name:       { default: "大前 このみ" }             # ← デモ主役の営業担当名
-  sales_rep_email:      { default: "konomi.omae@databricks.com" }
   llm_model:            { default: "databricks-claude-sonnet-4" }
-
-  # ---- 開発モード（本番は触らない） ----
   customer_limit:       { default: "" }                        # "10" 等で gold 処理対象を先頭 N 顧客に制限（デバッグ用）
 ```
+
+`targets.dev.workspace` の `host` や `root_path` は **書き換え不要**です。`host` は `--profile` で指定した workspace から自動解決、`root_path` は `${workspace.current_user.userName}` でログインユーザーのホーム配下に自動配置されます。
 
 > **SA が触るのはこのファイル 1 つだけ**です。`app.yaml` / `00_config.py` / `src/car_agent/backend/config.py` などは編集不要。
 >
