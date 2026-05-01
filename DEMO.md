@@ -1,4 +1,10 @@
-# Car Agent — デモコンペ シナリオ
+# Car Agent — デモシナリオ
+
+> **デモ前の準備**: セットアップ手順は [`README.md`](README.md) を参照。
+> Genie の「一般的な指示」と UC 関数 `current_sales_rep_email()` の登録は API 非対応のため**手動**です。
+> 詳細な UI 手順は [`docs/【参考】Genie作成手順.py`](docs/【参考】Genie作成手順.py) を参照（Databricks Workspace にインポートして表示）。
+
+---
 
 ## 1. 管理者画面でのデモ（導入）
 

@@ -1,19 +1,13 @@
-# docs/ — デモシナリオ & 手動セットアップ参考ドキュメント
+# docs/ — 手動セットアップ参考ノートブック
 
-## デモ用
+通常は `databricks bundle run setup_demo` で **Genie / KA / MAS が自動作成**されます。下記は**参考情報**として残してあります。
 
-| ファイル | 用途 |
-|---|---|
-| `DEMO_SCENARIO_COMPETITION.md` | デモ当日の画面遷移・入力プロンプト集 |
-
-## 手動セットアップ参考（UI 操作の手順書）
-
-通常は `databricks bundle run setup_demo` で **Genie / KA / MAS が自動作成**されるので、下記ノートブックは**参考情報**です。
-
-| ファイル | 内容 | 用途 |
+| ファイル | 内容 | 使いどき |
 |---|---|---|
-| `【参考】Genie作成手順.py` | 3 Genie の作成 + 一般的指示コピペ文 + UC 関数 `current_sales_rep_email()` の Curated functions 登録 | **⚠️ パイプライン後に Genie 3 つへ手動で「一般的指示」と「UC関数」を UI 入力するための必須参照ファイル**（API で自動化不可のため） |
-| `【参考】AgentBricksナレッジアシスタント.py` | KA の手動作成手順 | 自動化済み。参考のみ |
-| `【参考】AgentBricksマルチエージェントスーパーバイザー.py` | MAS の手動作成手順 | 自動化済み。参考のみ |
+| `【参考】Genie作成手順.py` | 3 Genie の UI 手動作成手順 + **一般的指示のコピペ文** + **UC 関数 `current_sales_rep_email()` の Curated functions 登録** | **パイプライン後に手動で必要**（API 非対応のため）。デモ前に一度開いて設定 |
+| `【参考】AgentBricksナレッジアシスタント.py` | KA の手動作成手順 + 3 sources 設定 + 手順設定 | 自動化失敗時のフォールバック用 |
+| `【参考】AgentBricksマルチエージェントスーパーバイザー.py` | MAS の手動作成手順 + 子エージェント設定 + 手順設定 | 自動化失敗時のフォールバック用 |
 
-> これらは説明用ノートブックなので **実行可能なコードは含まれていません**（markdown セルのみ）。Databricks workspace にインポートしてブラウザ上で読んでください。
+> これらは**説明用ノートブック**で実行可能なコードは含まれていません（markdown セルのみ）。Databricks Workspace にインポートしてブラウザで開いてください。
+>
+> デモ当日の台本・プロンプト集は**ルートの [`DEMO.md`](../DEMO.md)** を参照。

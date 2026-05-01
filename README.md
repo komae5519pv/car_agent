@@ -245,7 +245,8 @@ Step 4-3 完了後、App URL をブラウザで開けばデモを開始できま
 ```
 car_ai_agent/
 ├── databricks.yml              ★ SA が編集する唯一の設定ファイル
-├── README.md
+├── README.md                   ★ セットアップ・cheat sheet・teardown
+├── DEMO.md                     ★ デモ当日の台本 + 入力プロンプト集
 │
 ├── 00_config.py                ⚠️ 編集不要（widget から値を受け取るだけ）
 ├── 01_setup_demo_data.py       データパイプライン（01〜04 は Job 経由で自動実行）
@@ -261,11 +262,9 @@ car_ai_agent/
 ├── app/frontend/               React ソース
 ├── src/car_agent/              Python バックエンド (+ ビルド済みフロントエンド)
 │
-├── docs/                       📚 参考ドキュメント（手動セットアップ等）
+├── docs/                       📚 手動セットアップ参考ノートブック
 │   ├── README.md
-│   ├── DEMO_SCENARIO.md
-│   ├── DEMO_SCENARIO_COMPETITION.md  デモコンペ用の台本（営業画面 → 管理者画面 → マイページ）
-│   └── 【参考】Genie作成手順.py など
+│   └── 【参考】Genie作成手順.py / AgentBricksナレッジアシスタント.py / AgentBricksマルチエージェントスーパーバイザー.py
 │
 ├── resources/                  ⚙️ DAB リソース定義（SA は触らない）
 │   ├── setup_job.yml           Job 定義 + parameters（databricks.yml の variables を widget に橋渡し）
@@ -362,7 +361,7 @@ SELECT key, value FROM <catalog>.<schema>._app_config ORDER BY key;
 
 ## 🎬 デモシナリオ
 
-デモ当日の画面遷移・入力プロンプト集は [`docs/DEMO_SCENARIO_COMPETITION.md`](docs/DEMO_SCENARIO_COMPETITION.md) を参照。
+デモ当日の画面遷移・入力プロンプト集はルートの [`DEMO.md`](DEMO.md) を参照。
 
 ---
 
