@@ -19,8 +19,8 @@ yarn-debug.log*
 yarn-error.log*
 .npm
 
-# Keep frontend/dist for deployment!
-# frontend/dist/
+# Vite builds directly to src/car_agent/__dist__ (tracked for App deployment).
+app/frontend/dist/
 
 # IDE
 .idea/
@@ -44,3 +44,4 @@ htmlcov/
 
 # Build
 *.log
+*.tsbuildinfo
