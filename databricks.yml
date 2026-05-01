@@ -30,13 +30,13 @@ variables:
   # ---- Unity Catalog / コンピュート ----
   catalog:
     description: "Unity Catalog 名"
-    default: konomi_demo_catalog
+    default: komae_demo_v4
   schema:
     description: "スキーマ名"
     default: car_agent
   warehouse_id:
     description: "SQL Warehouse ID"
-    default: "348478745ad64b30"   # fevm-konomi-demo の Serverless Starter Warehouse
+    default: "4b9b953939869799"   # e2-demo-field-eng の Warehouse
 
   # ---- リソース名（SA が変更可能） ----
   # ⚠️ 重要: 同一 bundle 内では 1 つのワークスペースあたり 1 つの設定で運用してください。
@@ -102,7 +102,7 @@ targets:
     default: true
     workspace:
       # ログインユーザーのホームに置く（他の SA と衝突しない）
-      root_path: /Workspace/Users/${workspace.current_user.userName}/car-agent-demo
+      root_path: "/Workspace/Users/${workspace.current_user.userName}/01_Demo/20260501_car_agent"
       # ソースをルート直下に配置（files/ サブディレクトリをスキップ）
       file_path:     ${workspace.root_path}
       artifact_path: ${workspace.root_path}/.bundle/artifacts

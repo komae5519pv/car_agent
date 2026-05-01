@@ -172,74 +172,155 @@ echo "    genie_vehicle_id    : ${CFG_GENIE_VEHICLE_ID:-<none>}"
 echo "    genie_mypage_id     : ${CFG_GENIE_MYPAGE_ID:-<none>}"
 echo "    genie_dashboard_id  : ${CFG_GENIE_DASHBOARD_ID:-<none>}"
 
-# Tile ID は _app_config になくても、name で /api/2.0/tiles を検索して解決
+# ヘルパ: 空白区切り文字列に ID を追加（既出なら追加しない）
+# 使用: list=$(add_unique "$list" "$new_id")
+add_unique() {
+  local list="$1"
+  local item="$2"
+  [[ -z "$item" ]] && { echo "$list"; return; }
+  for existing in $list; do
+    if [[ "$existing" == "$item" ]]; then
+      echo "$list"
+      return
+    fi
+  done
+  if [[ -z "$list" ]]; then
+    echo "$item"
+  else
+    echo "$list $item"
+  fi
+}
+
+# ヘルパ: Databricks API をページネーション対応で全件取得
+# bash でループさせると quoting が複雑なので、各ページを databricks CLI で取り、
+# Python に渡してマージする（Python は stdin から空行区切りで複数の JSON を受け取る）
+# 使用: fetch_all_pages <endpoint> <page_size_param_name> <response_array_key>
+# 返り値: stdout に 1 つの JSON オブジェクト {"<array_key>": [...全件]}
+fetch_all_pages() {
+  local endpoint="$1"
+  local page_size_param="${2:-page_size}"
+  local array_key="$3"
+  local page_token=""
+  local page_num=0
+  local tmpfile
+  tmpfile=$(mktemp)
+
+  while true; do
+    page_num=$((page_num + 1))
+    local query
+    if [[ -n "$page_token" ]]; then
+      query="${page_size_param}=1000&page_token=${page_token}"
+    else
+      query="${page_size_param}=1000"
+    fi
+    local resp
+    resp=$(databricks api get "${endpoint}?${query}" --profile "$PROFILE" 2>/dev/null || echo '{}')
+    printf '%s\n---PAGE---\n' "$resp" >> "$tmpfile"
+    page_token=$(echo "$resp" | python3 -c "import json,sys; d=json.loads(sys.stdin.read() or '{}'); print(d.get('next_page_token',''))")
+    [[ -z "$page_token" ]] && break
+    [[ $page_num -ge 50 ]] && { echo "  ⚠️  ページ数 50 到達、打ち切り" >&2; break; }
+  done
+
+  ARRAY_KEY="$array_key" PAGES_FILE="$tmpfile" python3 <<'PYEOF'
+import json, os
+key = os.environ['ARRAY_KEY']
+with open(os.environ['PAGES_FILE']) as f:
+    raw = f.read()
+merged = {key: []}
+for chunk in raw.split('\n---PAGE---\n'):
+    chunk = chunk.strip()
+    if not chunk:
+        continue
+    try:
+        d = json.loads(chunk)
+        merged[key].extend(d.get(key, []))
+    except Exception:
+        pass
+print(json.dumps(merged))
+PYEOF
+
+  rm -f "$tmpfile"
+}
+
+# Tile ID: _app_config に入れていないので、必ず /api/2.0/tiles を name で検索
+# 同一名の orphan が残っていても全件拾うために、すべてのマッチを拾う
 echo ""
-echo "  Agent Bricks tile 検索 (name ベース):"
-TILES_JSON=$(databricks api get /api/2.0/tiles --profile "$PROFILE" 2>/dev/null || echo '{}')
-TILE_ENV=$(echo "$TILES_JSON" | python3 -c "
-import json, sys
+echo "  Agent Bricks tile 検索 (name ベース・ページング対応・同名全件):"
+TILES_JSON=$(fetch_all_pages /api/2.0/tiles page_size tiles)
+TILE_ENV=$(echo "$TILES_JSON" | KA_NAME="$KA_NAME" MAS_NAME="$MAS_NAME" python3 -c "
+import json, sys, os
 d = json.loads(sys.stdin.read() or '{}')
-ka = mas = ''
+ka_ids, mas_ids = [], []
 for t in d.get('tiles', []):
-    name = t.get('name', '')
+    name  = t.get('name', '')
     ttype = t.get('tile_type', '')
-    if name == '$KA_NAME' and ttype == 'KA':
-        ka = t.get('tile_id', '')
-    if name == '$MAS_NAME' and ttype == 'MAS':
-        mas = t.get('tile_id', '')
-print(f'CFG_KA_TILE_ID={ka}')
-print(f'CFG_MAS_TILE_ID={mas}')
+    tid   = t.get('tile_id', '')
+    if not tid:
+        continue
+    if name == os.environ['KA_NAME']  and ttype == 'KA':
+        ka_ids.append(tid)
+    if name == os.environ['MAS_NAME'] and ttype == 'MAS':
+        mas_ids.append(tid)
+print('CFG_KA_TILE_IDS=\"'  + ' '.join(ka_ids)  + '\"')
+print('CFG_MAS_TILE_IDS=\"' + ' '.join(mas_ids) + '\"')
 ")
 eval "$TILE_ENV"
-echo "    ka_tile_id  : ${CFG_KA_TILE_ID:-<none>}"
-echo "    mas_tile_id : ${CFG_MAS_TILE_ID:-<none>}"
+echo "    ka_tile_ids  : ${CFG_KA_TILE_IDS:-<none>}"
+echo "    mas_tile_ids : ${CFG_MAS_TILE_IDS:-<none>}"
 
-# Genie Space: _app_config で取得できなかった分を name 検索でフォールバック
+# Genie Space: 同名 Space の orphan が残っていることがあるので、name で全件検索
+# _app_config の ID とマージして重複排除
 echo ""
-echo "  Genie Space 検索 (name ベース・未取得 ID のフォールバック):"
-GENIE_JSON=$(databricks api get /api/2.0/genie/spaces --profile "$PROFILE" 2>/dev/null || echo '{}')
+echo "  Genie Space 検索 (name ベース・ページング対応・同名全件):"
+GENIE_JSON=$(fetch_all_pages /api/2.0/genie/spaces page_size spaces)
 GENIE_ENV=$(echo "$GENIE_JSON" | GENIE_VEHICLE_NAME="$GENIE_VEHICLE_NAME" GENIE_MYPAGE_NAME="$GENIE_MYPAGE_NAME" GENIE_DASHBOARD_NAME="$GENIE_DASHBOARD_NAME" python3 -c "
 import json, sys, os
 d = json.loads(sys.stdin.read() or '{}')
 spaces = d.get('spaces', [])
 wants = {
-    'CFG_GENIE_VEHICLE_ID_FB':   os.environ['GENIE_VEHICLE_NAME'],
-    'CFG_GENIE_MYPAGE_ID_FB':    os.environ['GENIE_MYPAGE_NAME'],
-    'CFG_GENIE_DASHBOARD_ID_FB': os.environ['GENIE_DASHBOARD_NAME'],
+    'CFG_GENIE_VEHICLE_IDS_FB':   os.environ['GENIE_VEHICLE_NAME'],
+    'CFG_GENIE_MYPAGE_IDS_FB':    os.environ['GENIE_MYPAGE_NAME'],
+    'CFG_GENIE_DASHBOARD_IDS_FB': os.environ['GENIE_DASHBOARD_NAME'],
 }
-for k, want_name in wants.items():
-    found = ''
+for varname, want_name in wants.items():
+    ids = []
     for s in spaces:
         if s.get('title', '') == want_name:
-            found = s.get('space_id', '')
-            break
-    print(f'{k}={found}')
+            sid = s.get('space_id', '')
+            if sid:
+                ids.append(sid)
+    print(varname + '=\"' + ' '.join(ids) + '\"')
 ")
 eval "$GENIE_ENV"
-# _app_config 側の ID がなければ name 検索結果を使う
-CFG_GENIE_VEHICLE_ID="${CFG_GENIE_VEHICLE_ID:-${CFG_GENIE_VEHICLE_ID_FB:-}}"
-CFG_GENIE_MYPAGE_ID="${CFG_GENIE_MYPAGE_ID:-${CFG_GENIE_MYPAGE_ID_FB:-}}"
-CFG_GENIE_DASHBOARD_ID="${CFG_GENIE_DASHBOARD_ID:-${CFG_GENIE_DASHBOARD_ID_FB:-}}"
-echo "    genie_vehicle_id    : ${CFG_GENIE_VEHICLE_ID:-<none>}"
-echo "    genie_mypage_id     : ${CFG_GENIE_MYPAGE_ID:-<none>}"
-echo "    genie_dashboard_id  : ${CFG_GENIE_DASHBOARD_ID:-<none>}"
+# _app_config の ID + 名前検索の全件をマージ (重複排除)
+CFG_GENIE_VEHICLE_IDS=$(add_unique   "${CFG_GENIE_VEHICLE_IDS_FB:-}"   "${CFG_GENIE_VEHICLE_ID:-}")
+CFG_GENIE_MYPAGE_IDS=$(add_unique    "${CFG_GENIE_MYPAGE_IDS_FB:-}"    "${CFG_GENIE_MYPAGE_ID:-}")
+CFG_GENIE_DASHBOARD_IDS=$(add_unique "${CFG_GENIE_DASHBOARD_IDS_FB:-}" "${CFG_GENIE_DASHBOARD_ID:-}")
+echo "    genie_vehicle_ids    : ${CFG_GENIE_VEHICLE_IDS:-<none>}"
+echo "    genie_mypage_ids     : ${CFG_GENIE_MYPAGE_IDS:-<none>}"
+echo "    genie_dashboard_ids  : ${CFG_GENIE_DASHBOARD_IDS:-<none>}"
 
-# Dashboard: _app_config で取得できなかったら name 検索でフォールバック
-if [[ -z "${CFG_DASHBOARD_ID:-}" ]]; then
-  echo ""
-  echo "  AI/BI Dashboard 検索 (name ベース):"
-  DASH_JSON=$(databricks api get /api/2.0/lakeview/dashboards --profile "$PROFILE" 2>/dev/null || echo '{}')
-  CFG_DASHBOARD_ID=$(echo "$DASH_JSON" | DASHBOARD_NAME="$DASHBOARD_NAME" python3 -c "
+# Dashboard: 同名 Dashboard の orphan (別フォルダ配置など) を確実に拾うため、常に
+# name で全件検索し、_app_config の ID とマージして重複排除
+# 注: /api/2.0/lakeview/dashboards はページネーション (default 20/page) があるため、
+#     next_page_token を追って全ページ走査しないと orphan を取りこぼす
+echo ""
+echo "  AI/BI Dashboard 検索 (name ベース・ページング対応・同名全件):"
+DASH_JSON=$(fetch_all_pages /api/2.0/lakeview/dashboards page_size dashboards)
+DASH_IDS_FB=$(echo "$DASH_JSON" | DASHBOARD_NAME="$DASHBOARD_NAME" python3 -c "
 import json, sys, os
 d = json.loads(sys.stdin.read() or '{}')
 want = os.environ['DASHBOARD_NAME']
+ids = []
 for x in d.get('dashboards', []):
     if x.get('display_name', '') == want:
-        print(x.get('dashboard_id', ''))
-        break
+        did = x.get('dashboard_id', '')
+        if did:
+            ids.append(did)
+print(' '.join(ids))
 ")
-  echo "    dashboard_id        : ${CFG_DASHBOARD_ID:-<none>}"
-fi
+CFG_DASHBOARD_IDS=$(add_unique "$DASH_IDS_FB" "${CFG_DASHBOARD_ID:-}")
+echo "    dashboard_ids        : ${CFG_DASHBOARD_IDS:-<none>}"
 
 # =====================================================================
 # 2. 確認
@@ -278,38 +359,38 @@ try_delete() {
 }
 
 # =====================================================================
-# 3. Dashboard 削除
+# 3. Dashboard 削除 (同名全件)
 # =====================================================================
-if [[ -n "${CFG_DASHBOARD_ID:-}" ]]; then
-  try_delete "AI/BI Dashboard (id=$CFG_DASHBOARD_ID)" \
-    databricks api delete "/api/2.0/lakeview/dashboards/$CFG_DASHBOARD_ID" --profile "$PROFILE"
-fi
+for did in ${CFG_DASHBOARD_IDS:-}; do
+  try_delete "AI/BI Dashboard (id=$did)" \
+    databricks api delete "/api/2.0/lakeview/dashboards/$did" --profile "$PROFILE"
+done
 
 # =====================================================================
-# 4. MAS tile 削除 (Agent Bricks)
+# 4. MAS tile 削除 (Agent Bricks・同名全件)
 # =====================================================================
-if [[ -n "${CFG_MAS_TILE_ID:-}" ]]; then
-  try_delete "MAS tile (id=$CFG_MAS_TILE_ID, name=$MAS_NAME)" \
-    databricks api delete "/api/2.0/tiles/$CFG_MAS_TILE_ID" --profile "$PROFILE"
-fi
+for tid in ${CFG_MAS_TILE_IDS:-}; do
+  try_delete "MAS tile (id=$tid, name=$MAS_NAME)" \
+    databricks api delete "/api/2.0/tiles/$tid" --profile "$PROFILE"
+done
 
 # =====================================================================
-# 5. KA tile 削除 (Agent Bricks)
+# 5. KA tile 削除 (Agent Bricks・同名全件)
 # =====================================================================
-if [[ -n "${CFG_KA_TILE_ID:-}" ]]; then
-  try_delete "KA tile (id=$CFG_KA_TILE_ID, name=$KA_NAME)" \
-    databricks api delete "/api/2.0/tiles/$CFG_KA_TILE_ID" --profile "$PROFILE"
-fi
+for tid in ${CFG_KA_TILE_IDS:-}; do
+  try_delete "KA tile (id=$tid, name=$KA_NAME)" \
+    databricks api delete "/api/2.0/tiles/$tid" --profile "$PROFILE"
+done
 
 # =====================================================================
-# 6. Genie Spaces 削除
+# 6. Genie Spaces 削除 (同名全件)
 # =====================================================================
-for gkey in CFG_GENIE_VEHICLE_ID CFG_GENIE_MYPAGE_ID CFG_GENIE_DASHBOARD_ID; do
-  gid="${!gkey:-}"
-  if [[ -n "$gid" ]]; then
+for gkey in CFG_GENIE_VEHICLE_IDS CFG_GENIE_MYPAGE_IDS CFG_GENIE_DASHBOARD_IDS; do
+  gids="${!gkey:-}"
+  for gid in $gids; do
     try_delete "Genie Space $gkey=$gid" \
       databricks api delete "/api/2.0/genie/spaces/$gid" --profile "$PROFILE"
-  fi
+  done
 done
 
 # =====================================================================
